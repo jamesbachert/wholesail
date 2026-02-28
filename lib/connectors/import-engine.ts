@@ -1,0 +1,300 @@
+import { prisma } from '../prisma';
+import { ConnectorResult, ParsedRecord } from './types';
+
+// ============================================================
+// IMPORT ENGINE
+// Takes parsed records from any connector and imports them
+// into the database as properties, leads, and signals.
+// Handles deduplication by address matching.
+// ============================================================
+
+export async function importRecords(
+  records: ParsedRecord[],
+  dataSourceSlug: string
+): Promise<ConnectorResult> {
+  const startTime = Date.now();
+  let newLeads = 0;
+  let updatedLeads = 0;
+  let errors = 0;
+  const errorMessages: string[] = [];
+
+  // Get the region for Lehigh Valley
+  const region = await prisma.region.findFirst({
+    where: { slug: 'lehigh-valley', isActive: true },
+  });
+
+  if (!region) {
+    return {
+      success: false,
+      newLeads: 0,
+      updatedLeads: 0,
+      errors: 1,
+      errorMessages: ['No active Lehigh Valley region found. Run prisma db seed first.'],
+      rawRecords: records.length,
+      duration: Date.now() - startTime,
+    };
+  }
+
+  // Get or create the data source record
+  let dataSource = await prisma.dataSource.findUnique({
+    where: { slug: dataSourceSlug },
+  });
+
+  if (!dataSource) {
+    dataSource = await prisma.dataSource.create({
+      data: {
+        name: dataSourceSlug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        slug: dataSourceSlug,
+        type: 'sheriff_sale',
+        regionId: region.id,
+        status: 'ACTIVE',
+      },
+    });
+  }
+
+  // Get scoring weights for auto-scoring
+  const weights = await prisma.scoringWeight.findMany({ where: { isActive: true } });
+  const weightMap = new Map(weights.map((w) => [w.signalType, w.weight]));
+
+  for (const record of records) {
+    try {
+      // Normalize address for dedup
+      const normalizedAddress = normalizeAddress(record.address);
+      const normalizedCity = record.city.trim().toLowerCase();
+
+      // Check if property already exists
+      let property = await prisma.property.findFirst({
+        where: {
+          AND: [
+            { city: { equals: record.city, mode: 'insensitive' } },
+            { state: record.state },
+          ],
+          OR: [
+            { address: { equals: record.address, mode: 'insensitive' } },
+            { address: { equals: normalizedAddress, mode: 'insensitive' } },
+          ],
+        },
+        include: { lead: { include: { signals: true } } },
+      });
+
+      if (property && property.lead) {
+        // Property exists with a lead — check if this signal already exists
+        const existingSignal = property.lead.signals.find(
+          (s) =>
+            s.signalType === 'pre_foreclosure' &&
+            s.source?.includes('CivilView')
+        );
+
+        if (!existingSignal) {
+          // Add the pre-foreclosure signal
+          for (const signal of record.signals) {
+            const points = weightMap.get(signal.signalType) ?? signal.points;
+            await prisma.leadSignal.create({
+              data: {
+                leadId: property.lead.id,
+                signalType: signal.signalType,
+                label: signal.label,
+                category: signal.category,
+                points,
+                value: signal.value,
+                source: signal.source,
+              },
+            });
+          }
+          // Recalculate score
+          await recalculateScore(property.lead.id);
+          updatedLeads++;
+        } else {
+          // Signal already exists — update the value if sale date changed
+          if (
+            existingSignal.value !== record.signals[0]?.value &&
+            record.signals[0]?.value
+          ) {
+            await prisma.leadSignal.update({
+              where: { id: existingSignal.id },
+              data: { value: record.signals[0].value },
+            });
+            updatedLeads++;
+          }
+        }
+
+        // Update owner name if we have one and property doesn't
+        if (record.ownerName && !property.ownerName) {
+          await prisma.property.update({
+            where: { id: property.id },
+            data: { ownerName: record.ownerName },
+          });
+        }
+      } else if (property && !property.lead) {
+        // Property exists but no lead — create one
+        const lead = await prisma.lead.create({
+          data: {
+            propertyId: property.id,
+            regionId: region.id,
+            status: 'NEW',
+            isTimeSensitive: !!record.saleDate,
+            timeSensitiveReason: record.saleDate
+              ? `Sheriff sale scheduled ${record.saleDate}`
+              : undefined,
+          },
+        });
+
+        for (const signal of record.signals) {
+          const points = weightMap.get(signal.signalType) ?? signal.points;
+          await prisma.leadSignal.create({
+            data: {
+              leadId: lead.id,
+              signalType: signal.signalType,
+              label: signal.label,
+              category: signal.category,
+              points,
+              value: signal.value,
+              source: signal.source,
+            },
+          });
+        }
+
+        await recalculateScore(lead.id);
+        newLeads++;
+      } else {
+        // Brand new property + lead
+        property = await prisma.property.create({
+          data: {
+            address: record.address,
+            city: record.city,
+            state: record.state,
+            zipCode: record.zipCode,
+            county: record.county,
+            ownerName: record.ownerName,
+          },
+        });
+
+        const lead = await prisma.lead.create({
+          data: {
+            propertyId: property.id,
+            regionId: region.id,
+            status: 'NEW',
+            isTimeSensitive: !!record.saleDate,
+            timeSensitiveReason: record.saleDate
+              ? `Sheriff sale scheduled ${record.saleDate}`
+              : undefined,
+          },
+        });
+
+        for (const signal of record.signals) {
+          const points = weightMap.get(signal.signalType) ?? signal.points;
+          await prisma.leadSignal.create({
+            data: {
+              leadId: lead.id,
+              signalType: signal.signalType,
+              label: signal.label,
+              category: signal.category,
+              points,
+              value: signal.value,
+              source: signal.source,
+            },
+          });
+        }
+
+        await recalculateScore(lead.id);
+
+        // Create source record for audit trail
+        await prisma.sourceRecord.create({
+          data: {
+            dataSourceId: dataSource.id,
+            propertyId: property.id,
+            rawData: record.rawData as any,
+            processedAt: new Date(),
+          },
+        });
+
+        newLeads++;
+      }
+    } catch (err: any) {
+      errors++;
+      errorMessages.push(
+        `Error importing ${record.address}: ${err.message}`
+      );
+      console.error(`Import error for ${record.address}:`, err);
+    }
+  }
+
+  // Update data source status
+  await prisma.dataSource.update({
+    where: { id: dataSource.id },
+    data: {
+      lastRun: new Date(),
+      lastSuccess: errors === 0 ? new Date() : undefined,
+      recordsFound: records.length,
+      status: errors === 0 ? 'ACTIVE' : errors === records.length ? 'ERROR' : 'ACTIVE',
+      errorMessage:
+        errorMessages.length > 0
+          ? errorMessages.slice(0, 3).join('; ')
+          : null,
+    },
+  });
+
+  // Create notification if we found new high-value leads
+  if (newLeads > 0) {
+    await prisma.notification.create({
+      data: {
+        type: 'NEW_HIGH_SCORE_LEAD',
+        title: `${newLeads} new sheriff sale lead${newLeads > 1 ? 's' : ''} imported`,
+        message: `Lehigh County Sheriff Sales: ${newLeads} new, ${updatedLeads} updated from ${records.length} records.`,
+      },
+    });
+  }
+
+  return {
+    success: errors === 0,
+    newLeads,
+    updatedLeads,
+    errors,
+    errorMessages,
+    rawRecords: records.length,
+    duration: Date.now() - startTime,
+  };
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+async function recalculateScore(leadId: string) {
+  const signals = await prisma.leadSignal.findMany({ where: { leadId } });
+
+  let automatedScore = 0;
+  let manualScore = 0;
+
+  for (const signal of signals) {
+    if (signal.category === 'automated') automatedScore += signal.points;
+    else manualScore += signal.points;
+  }
+
+  const totalScore = Math.min(automatedScore + manualScore, 100);
+
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { automatedScore, manualScore, totalScore },
+  });
+}
+
+function normalizeAddress(address: string): string {
+  return address
+    .toUpperCase()
+    .replace(/\./g, '')
+    .replace(/\bSTREET\b/g, 'ST')
+    .replace(/\bAVENUE\b/g, 'AVE')
+    .replace(/\bROAD\b/g, 'RD')
+    .replace(/\bDRIVE\b/g, 'DR')
+    .replace(/\bCOURT\b/g, 'CT')
+    .replace(/\bLANE\b/g, 'LN')
+    .replace(/\bBOULEVARD\b/g, 'BLVD')
+    .replace(/\bCIRCLE\b/g, 'CIR')
+    .replace(/\bNORTH\b/g, 'N')
+    .replace(/\bSOUTH\b/g, 'S')
+    .replace(/\bEAST\b/g, 'E')
+    .replace(/\bWEST\b/g, 'W')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
