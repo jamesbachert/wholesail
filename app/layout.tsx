@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { ThemeProvider } from '@/components/shared/ThemeProvider';
+import { DataModeProvider } from '@/components/shared/DataModeProvider';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
 import { SidebarProvider } from '@/components/layout/SidebarContext';
@@ -31,30 +32,32 @@ export default function RootLayout({
         style={{ fontFamily: 'var(--font-body)' }}
       >
         <ThemeProvider>
-          <SidebarProvider>
-            <div className="flex h-screen overflow-hidden">
-              {/* Desktop Sidebar */}
-              <div className="hidden md:block">
-                <Sidebar />
-              </div>
+          <DataModeProvider>
+            <SidebarProvider>
+              <div className="flex h-screen overflow-hidden">
+                {/* Desktop Sidebar */}
+                <div className="hidden md:block">
+                  <Sidebar />
+                </div>
 
-              {/* Main Content Area */}
-              <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                <TopBar />
-                <main
-                  className="flex-1 overflow-y-auto p-4 md:p-6"
-                  style={{ backgroundColor: 'var(--bg-primary)' }}
-                >
-                  {children}
-                </main>
-              </div>
+                {/* Main Content Area */}
+                <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                  <TopBar />
+                  <main
+                    className="flex-1 overflow-y-auto p-4 md:p-6"
+                    style={{ backgroundColor: 'var(--bg-primary)' }}
+                  >
+                    {children}
+                  </main>
+                </div>
 
-              {/* Mobile Bottom Nav */}
-              <div className="block md:hidden">
-                <MobileNav />
+                {/* Mobile Bottom Nav */}
+                <div className="block md:hidden">
+                  <MobileNav />
+                </div>
               </div>
-            </div>
-          </SidebarProvider>
+            </SidebarProvider>
+          </DataModeProvider>
         </ThemeProvider>
       </body>
     </html>
