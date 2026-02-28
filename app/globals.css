@@ -1,0 +1,283 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   WHOLESAIL THEME - CSS CUSTOM PROPERTIES
+   ============================================================ */
+
+@layer base {
+  :root {
+    /* Brand */
+    --brand-deep: #0A7E8C;
+    --brand-ocean: #1B98A8;
+    --brand-cyan: #2EC4D4;
+
+    /* Light Mode (default) */
+    --bg-primary: #F8FAFB;
+    --bg-surface: #FFFFFF;
+    --bg-elevated: #F1F5F9;
+    --bg-sidebar: #FFFFFF;
+    --text-primary: #0F172A;
+    --text-secondary: #64748B;
+    --text-tertiary: #94A3B8;
+    --border-primary: #E2E8F0;
+    --border-subtle: #F1F5F9;
+
+    /* Semantic */
+    --success: #10B981;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+    --info: #2EC4D4;
+
+    /* Score colors */
+    --score-hot: #0A7E8C;
+    --score-warm: #1B98A8;
+    --score-medium: #F59E0B;
+    --score-cold: #94A3B8;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
+
+    /* Sidebar */
+    --sidebar-width-expanded: 260px;
+    --sidebar-width-collapsed: 72px;
+
+    /* Fonts */
+    --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
+    --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+  }
+
+  .dark {
+    --bg-primary: #0B1120;
+    --bg-surface: #131D35;
+    --bg-elevated: #1A2744;
+    --bg-sidebar: #0D1526;
+    --text-primary: #F1F5F9;
+    --text-secondary: #94A3B8;
+    --text-tertiary: #64748B;
+    --border-primary: #1E3050;
+    --border-subtle: #182440;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* ============================================================
+   BASE STYLES
+   ============================================================ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================================
+   SCROLLBAR STYLING
+   ============================================================ */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-tertiary);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+/* ============================================================
+   UTILITY CLASSES
+   ============================================================ */
+
+@layer components {
+  /* Cards */
+  .ws-card {
+    @apply rounded-xl border transition-all duration-200;
+    background-color: var(--bg-surface);
+    border-color: var(--border-primary);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .ws-card:hover {
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Buttons */
+  .ws-btn-primary {
+    @apply px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 inline-flex items-center gap-2;
+    background-color: var(--brand-deep);
+    color: #FFFFFF;
+  }
+
+  .ws-btn-primary:hover {
+    background-color: var(--brand-ocean);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(10, 126, 140, 0.3);
+  }
+
+  .ws-btn-secondary {
+    @apply px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 inline-flex items-center gap-2 border;
+    background-color: transparent;
+    border-color: var(--border-primary);
+    color: var(--text-primary);
+  }
+
+  .ws-btn-secondary:hover {
+    background-color: var(--bg-elevated);
+  }
+
+  .ws-btn-ghost {
+    @apply px-3 py-1.5 rounded-lg font-medium text-sm transition-all duration-200 inline-flex items-center gap-2;
+    color: var(--text-secondary);
+  }
+
+  .ws-btn-ghost:hover {
+    background-color: var(--bg-elevated);
+    color: var(--text-primary);
+  }
+
+  /* Input */
+  .ws-input {
+    @apply w-full px-3 py-2 rounded-lg text-sm border transition-all duration-200 outline-none;
+    background-color: var(--bg-surface);
+    border-color: var(--border-primary);
+    color: var(--text-primary);
+  }
+
+  .ws-input::placeholder {
+    color: var(--text-tertiary);
+  }
+
+  .ws-input:focus {
+    border-color: var(--brand-deep);
+    box-shadow: 0 0 0 3px rgba(10, 126, 140, 0.15);
+  }
+
+  /* Score badge */
+  .ws-score {
+    @apply inline-flex items-center justify-center w-10 h-10 rounded-full text-sm font-bold text-white;
+  }
+
+  .ws-score-hot {
+    background-color: var(--score-hot);
+  }
+
+  .ws-score-warm {
+    background-color: var(--score-warm);
+  }
+
+  .ws-score-medium {
+    background-color: var(--score-medium);
+  }
+
+  .ws-score-cold {
+    background-color: var(--score-cold);
+  }
+
+  /* Signal tags */
+  .ws-tag {
+    @apply inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium;
+  }
+
+  .ws-tag-danger {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: #EF4444;
+  }
+
+  .ws-tag-warning {
+    background-color: rgba(245, 158, 11, 0.1);
+    color: #F59E0B;
+  }
+
+  .ws-tag-success {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: #10B981;
+  }
+
+  .ws-tag-info {
+    background-color: rgba(46, 196, 212, 0.1);
+    color: #1B98A8;
+  }
+
+  .ws-tag-neutral {
+    background-color: var(--bg-elevated);
+    color: var(--text-secondary);
+  }
+
+  /* Status badges */
+  .ws-status {
+    @apply inline-flex items-center gap-1.5 text-xs font-medium;
+  }
+
+  .ws-status::before {
+    content: '';
+    @apply w-1.5 h-1.5 rounded-full;
+  }
+
+  .ws-status-new::before { background-color: var(--brand-cyan); }
+  .ws-status-contacted::before { background-color: var(--brand-ocean); }
+  .ws-status-warm::before { background-color: var(--warning); }
+  .ws-status-hot::before { background-color: var(--danger); }
+  .ws-status-closed::before { background-color: var(--success); }
+  .ws-status-dead::before { background-color: var(--text-tertiary); }
+}
+
+/* ============================================================
+   SIDEBAR TRANSITIONS
+   ============================================================ */
+
+.sidebar-transition {
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              padding 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-text-transition {
+  transition: opacity 0.15s ease, width 0.25s ease;
+}
+
+/* ============================================================
+   TABLE STYLES
+   ============================================================ */
+
+.ws-table-row {
+  transition: background-color 0.15s ease;
+}
+
+.ws-table-row:hover {
+  background-color: var(--bg-elevated);
+}
+
+/* ============================================================
+   NOTIFICATION DOT
+   ============================================================ */
+
+.notification-dot {
+  @apply absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full;
+  background-color: var(--danger);
+  animation: pulseSubtle 2s ease-in-out infinite;
+}
+
+@keyframes pulseSubtle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.1); }
+}

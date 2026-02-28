@@ -1,0 +1,366 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// REGIONS & CONFIGURATION
+// ============================================================
+
+model Region {
+  id          String   @id @default(cuid())
+  name        String   // "Greater Lehigh Valley"
+  slug        String   @unique // "lehigh-valley"
+  state       String   // "PA"
+  counties    String[] // ["Lehigh", "Northampton", "Berks"]
+  zipCodes    String[] // All zip codes in the region
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  leads       Lead[]
+  dataSources DataSource[]
+  zipAnalyses ZipCodeAnalysis[]
+}
+
+model ZipCodeAnalysis {
+  id              String   @id @default(cuid())
+  zipCode         String
+  regionId        String
+  region          Region   @relation(fields: [regionId], references: [id])
+  totalProperties Int      @default(0)
+  avgPropertyValue Float?
+  saturationScore  Float   @default(0) // 0-100, how many other wholesalers are active
+  competitorCount  Int     @default(0)
+  leadDensity      Float   @default(0)
+  lastAnalyzed     DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([zipCode, regionId])
+}
+
+// ============================================================
+// PROPERTIES & OWNERS
+// ============================================================
+
+model Property {
+  id              String   @id @default(cuid())
+  address         String
+  city            String
+  state           String
+  zipCode         String
+  county          String?
+  
+  // Property details
+  propertyType    String?  // "Single Family", "Multi Family", "Townhouse", etc.
+  bedrooms        Int?
+  bathrooms       Float?
+  sqft            Int?
+  lotSize         Float?   // acres
+  yearBuilt       Int?
+  
+  // Financial
+  assessedValue   Float?
+  estimatedValue  Float?   // ARV estimate
+  estimatedEquity Float?
+  
+  // Ownership
+  ownerName       String?
+  ownerMailingAddress String?
+  ownerCity       String?
+  ownerState      String?
+  ownerZip        String?
+  ownerPhone      String?
+  ownerPhone2     String?
+  ownerEmail      String?
+  isAbsenteeOwner Boolean  @default(false)
+  ownershipLength Int?     // months
+  
+  // Status
+  isVacant        Boolean  @default(false)
+  hasCodeViolations Boolean @default(false)
+  
+  latitude        Float?
+  longitude       Float?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  lead            Lead?
+  sourceRecords   SourceRecord[]
+
+  @@index([zipCode])
+  @@index([city, state])
+}
+
+// ============================================================
+// LEADS (the scored, actionable records)
+// ============================================================
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  WARM
+  HOT
+  UNDER_CONTRACT
+  HANDED_OFF
+  CLOSED
+  DEAD
+  DO_NOT_CONTACT
+}
+
+model Lead {
+  id              String     @id @default(cuid())
+  propertyId      String     @unique
+  property        Property   @relation(fields: [propertyId], references: [id])
+  regionId        String
+  region          Region     @relation(fields: [regionId], references: [id])
+  
+  // Scoring
+  automatedScore  Float      @default(0) // 0-100 from automated signals
+  manualScore     Float      @default(0) // 0-100 from manual enrichment
+  totalScore      Float      @default(0) // Combined weighted score
+  
+  // Status tracking
+  status          LeadStatus @default(NEW)
+  priority        String     @default("normal") // "urgent", "high", "normal", "low"
+  isTimeSensitive Boolean    @default(false)
+  timeSensitiveReason String?
+  timeSensitiveDeadline DateTime?
+  
+  // Assignment
+  assignedTo      String?
+  
+  // Dates
+  firstDiscovered DateTime   @default(now())
+  lastContacted   DateTime?
+  nextFollowUp    DateTime?
+  
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  // Relations
+  signals         LeadSignal[]
+  contacts        ContactLog[]
+  notes           LeadNote[]
+  handoffs        Handoff[]
+
+  @@index([totalScore(sort: Desc)])
+  @@index([status])
+  @@index([regionId])
+  @@index([isTimeSensitive])
+}
+
+// ============================================================
+// SCORING SIGNALS
+// ============================================================
+
+model ScoringWeight {
+  id          String   @id @default(cuid())
+  signalType  String   @unique // "pre_foreclosure", "probate", "divorce", etc.
+  label       String   // "Pre-Foreclosure"
+  category    String   // "automated" or "manual"
+  weight      Float    // 0-100 point value
+  description String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model LeadSignal {
+  id          String   @id @default(cuid())
+  leadId      String
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  signalType  String   // matches ScoringWeight.signalType
+  label       String
+  category    String   // "automated" or "manual"
+  value       String?  // Additional context, e.g. "Filed 2024-01-15"
+  points      Float    // Points contributed to score
+  source      String?  // Which data source found this
+  discoveredAt DateTime @default(now())
+  
+  createdAt   DateTime @default(now())
+
+  @@index([leadId])
+}
+
+// ============================================================
+// DATA SOURCES (connector registry)
+// ============================================================
+
+enum SourceStatus {
+  ACTIVE
+  PAUSED
+  ERROR
+  PENDING
+}
+
+model DataSource {
+  id            String       @id @default(cuid())
+  name          String       // "Lehigh County Tax Sales"
+  slug          String       @unique
+  type          String       // "court_filing", "tax_sale", "code_violation", etc.
+  regionId      String
+  region        Region       @relation(fields: [regionId], references: [id])
+  url           String?      // Source URL
+  status        SourceStatus @default(PENDING)
+  lastRun       DateTime?
+  lastSuccess   DateTime?
+  recordsFound  Int          @default(0)
+  errorMessage  String?
+  config        Json?        // Connector-specific configuration
+  schedule      String?      // Cron expression for auto-runs
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  records       SourceRecord[]
+}
+
+model SourceRecord {
+  id           String     @id @default(cuid())
+  dataSourceId String
+  dataSource   DataSource @relation(fields: [dataSourceId], references: [id])
+  propertyId   String?
+  property     Property?  @relation(fields: [propertyId], references: [id])
+  rawData      Json       // Original scraped data
+  processedAt  DateTime?
+  createdAt    DateTime   @default(now())
+
+  @@index([dataSourceId])
+}
+
+// ============================================================
+// CONTACT HISTORY
+// ============================================================
+
+enum ContactType {
+  CALL_OUTBOUND
+  CALL_INBOUND
+  SMS_OUTBOUND
+  SMS_INBOUND
+  EMAIL_OUTBOUND
+  EMAIL_INBOUND
+  VOICEMAIL
+  NOTE
+}
+
+enum ContactOutcome {
+  CONNECTED
+  NO_ANSWER
+  VOICEMAIL
+  WRONG_NUMBER
+  INTERESTED
+  NOT_INTERESTED
+  CALLBACK
+  DO_NOT_CALL
+  SENT
+  DELIVERED
+  REPLIED
+  BOUNCED
+}
+
+model ContactLog {
+  id          String         @id @default(cuid())
+  leadId      String
+  lead        Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type        ContactType
+  outcome     ContactOutcome?
+  duration    Int?           // seconds for calls
+  message     String?        // SMS/email content
+  notes       String?
+  createdAt   DateTime       @default(now())
+
+  @@index([leadId])
+  @@index([createdAt(sort: Desc)])
+}
+
+model LeadNote {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  content   String
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leadId])
+}
+
+// ============================================================
+// HANDOFFS
+// ============================================================
+
+enum HandoffStatus {
+  PENDING
+  SENT
+  ACCEPTED
+  UNDER_CONTRACT
+  CLOSED
+  REJECTED
+}
+
+model WholesalePartner {
+  id          String    @id @default(cuid())
+  name        String
+  company     String?
+  email       String
+  phone       String?
+  regions     String[]  // Region slugs they cover
+  isActive    Boolean   @default(true)
+  totalDeals  Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  handoffs    Handoff[]
+}
+
+model Handoff {
+  id          String        @id @default(cuid())
+  leadId      String
+  lead        Lead          @relation(fields: [leadId], references: [id])
+  partnerId   String
+  partner     WholesalePartner @relation(fields: [partnerId], references: [id])
+  status      HandoffStatus @default(PENDING)
+  summary     String?       // Generated lead summary
+  whyHot      String?       // Key motivation signals
+  notes       String?
+  sentAt      DateTime?
+  respondedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([leadId])
+  @@index([partnerId])
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+
+enum NotificationType {
+  NEW_HIGH_SCORE_LEAD
+  TIME_SENSITIVE_EVENT
+  LEAD_STATUS_CHANGE
+  INBOUND_REPLY
+  FOLLOW_UP_DUE
+  HANDOFF_RESPONSE
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  type      NotificationType
+  title     String
+  message   String
+  leadId    String?
+  isRead    Boolean          @default(false)
+  isDismissed Boolean        @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([isRead, createdAt(sort: Desc)])
+}
