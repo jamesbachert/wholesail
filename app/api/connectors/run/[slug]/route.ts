@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnector } from '@/lib/connectors';
 import { importRecords } from '@/lib/connectors/import-engine';
-import { NorthamptonSheriffSalesConnector } from '@/lib/connectors/northampton-sheriff-sales';
 
 // Secret key to prevent unauthorized triggers
 const CONNECTOR_SECRET = process.env.CONNECTOR_SECRET || 'wholesail-run-2026';
@@ -49,7 +48,7 @@ export async function POST(
       records = connector.parseManualInput(body.data);
     } else {
       // Auto-fetch mode
-      records = await connector.fetchAndParse();
+      records = await connector.fetch();
     }
 
     console.log(`[Connector] Parsed ${records.length} records from ${connector.name}`);

@@ -179,6 +179,7 @@ export function SignalsTab({ leadId, signals: initialSignals, totalScore: initia
   const recalcLocal = useCallback((updatedSignals: Signal[]) => {
     let score = 0;
     let distressCount = 0;
+    let codeViolationCount = 0;
     let activeCount = 0;
 
     for (const s of updatedSignals) {
@@ -186,11 +187,15 @@ export function SignalsTab({ leadId, signals: initialSignals, totalScore: initia
         score += s.points;
         activeCount++;
         if (s.category === 'distress') distressCount++;
+        if (s.signalType === 'code_violation') codeViolationCount++;
       }
     }
 
     if (distressCount >= 3) score += 20;
     else if (distressCount >= 2) score += 10;
+
+    // Code violation stacking bonus: +10 for 2+ violations
+    if (codeViolationCount >= 2) score += 10;
 
     setLocalScore(score);
     setLocalPriority(score >= 100 ? 'urgent' : score >= 70 ? 'high' : score >= 40 ? 'normal' : 'low');
@@ -398,6 +403,7 @@ export function SignalsTab({ leadId, signals: initialSignals, totalScore: initia
   // Score display
   const activeTotal = localSignals.filter((s) => s.isActive).length;
   const activeDistress = localSignals.filter((s) => s.category === 'distress' && s.isActive).length;
+  const activeCodeViolations = localSignals.filter((s) => s.signalType === 'code_violation' && s.isActive).length;
 
   const priorityDisplay = localScore >= 100
     ? { emoji: '🔥', label: 'Priority — call same day', color: '#ef4444' }
@@ -426,7 +432,12 @@ export function SignalsTab({ leadId, signals: initialSignals, totalScore: initia
               {activeTotal} active signal{activeTotal !== 1 ? 's' : ''}
               {activeDistress >= 2 && (
                 <span style={{ color: '#f59e0b' }}>
-                  {' '}· Stacking bonus: +{activeDistress >= 3 ? 20 : 10} pts
+                  {' '}· Distress stacking: +{activeDistress >= 3 ? 20 : 10} pts
+                </span>
+              )}
+              {activeCodeViolations >= 2 && (
+                <span style={{ color: '#ef4444' }}>
+                  {' '}· Multi-violation: +10 pts ({activeCodeViolations} cases)
                 </span>
               )}
             </p>

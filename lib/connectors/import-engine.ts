@@ -1,12 +1,16 @@
 import { prisma } from '../prisma';
 import { ConnectorResult, ParsedRecord } from './types';
 
+// Signal types that allow multiple instances per lead (dedup by value, not type)
+const STACKABLE_SIGNAL_TYPES = ['code_violation'];
+
 // ============================================================
 // IMPORT ENGINE
 // Takes parsed records from any connector and imports them
 // into the database as properties, leads, and signals.
 // Handles deduplication by address matching.
 // Supports signal stacking with distress bonuses.
+// Syncs property flags (hasCodeViolations, isVacant, isAbsenteeOwner).
 // ============================================================
 
 export async function importRecords(
@@ -84,14 +88,31 @@ export async function importRecords(
         let signalsAdded = false;
 
         for (const signal of record.signals) {
-          const existingSignal = property.lead.signals.find(
-            (s) => s.signalType === signal.signalType && s.isActive
-          );
+          // For stackable signal types (like code_violation), dedup by value (case number)
+          // instead of just signal type, so multiple cases on one property each get their own signal
+          const isStackable = STACKABLE_SIGNAL_TYPES.includes(signal.signalType);
+
+          const existingSignal = isStackable
+            ? property.lead.signals.find(
+                (s) => s.signalType === signal.signalType && s.value === signal.value && s.isActive
+              )
+            : property.lead.signals.find(
+                (s) => s.signalType === signal.signalType && s.isActive
+              );
 
           if (!existingSignal) {
-            // New signal type — add it
+            // New signal — for stackable types, only the first gets full points
             const weightDef = weightMap.get(signal.signalType);
-            const points = weightDef?.weight ?? signal.points;
+            let points = weightDef?.weight ?? signal.points;
+
+            if (isStackable) {
+              const existingCount = property.lead.signals.filter(
+                (s) => s.signalType === signal.signalType && s.isActive
+              ).length;
+              if (existingCount > 0) {
+                points = 0; // Additional stackable signals score 0 pts individually
+              }
+            }
 
             await prisma.leadSignal.create({
               data: {
@@ -110,7 +131,7 @@ export async function importRecords(
             });
             signalsAdded = true;
           } else {
-            // Signal exists — update value if changed (e.g. new sale date)
+            // Signal exists — update value if changed (e.g. new case number)
             if (existingSignal.value !== signal.value && signal.value) {
               await prisma.leadSignal.update({
                 where: { id: existingSignal.id },
@@ -125,6 +146,7 @@ export async function importRecords(
 
         if (signalsAdded) {
           await recalculateScore(property.lead.id);
+          await syncPropertyFlags(property.id, record.signals);
           await prisma.lead.update({
             where: { id: property.lead.id },
             data: {
@@ -179,6 +201,7 @@ export async function importRecords(
         }
 
         await recalculateScore(lead.id);
+        await syncPropertyFlags(property.id, record.signals);
         newLeads++;
       } else {
         // Brand new property + lead
@@ -228,6 +251,7 @@ export async function importRecords(
         }
 
         await recalculateScore(lead.id);
+        await syncPropertyFlags(property.id, record.signals);
 
         // Audit trail
         await prisma.sourceRecord.create({
@@ -299,6 +323,7 @@ async function recalculateScore(leadId: string) {
   let automatedScore = 0;
   let manualScore = 0;
   let distressCount = 0;
+  let codeViolationCount = 0;
 
   for (const signal of signals) {
     if (signal.isAutomated || signal.category === 'distress') {
@@ -311,6 +336,11 @@ async function recalculateScore(leadId: string) {
     if (signal.category === 'distress') {
       distressCount++;
     }
+
+    // Count code violations for their own stacking bonus
+    if (signal.signalType === 'code_violation') {
+      codeViolationCount++;
+    }
   }
 
   // Distress stacking bonuses
@@ -321,7 +351,13 @@ async function recalculateScore(leadId: string) {
     stackingBonus = 10;
   }
 
-  const totalScore = automatedScore + manualScore + stackingBonus;
+  // Code violation stacking bonus: +10 for 2+ violations
+  let codeViolationBonus = 0;
+  if (codeViolationCount >= 2) {
+    codeViolationBonus = 10;
+  }
+
+  const totalScore = automatedScore + manualScore + stackingBonus + codeViolationBonus;
 
   // Determine priority tier
   let priority = 'normal';
@@ -334,6 +370,39 @@ async function recalculateScore(leadId: string) {
     where: { id: leadId },
     data: { automatedScore, manualScore, totalScore, priority },
   });
+}
+
+// ============================================================
+// PROPERTY FLAG SYNC
+// Sets boolean flags on Property based on imported signal types.
+// Called after each lead's signals are imported.
+// ============================================================
+
+async function syncPropertyFlags(
+  propertyId: string,
+  signals: Array<{ signalType: string }>
+) {
+  const flagMap: Record<string, string> = {
+    code_violation: 'hasCodeViolations',
+    vacant_property: 'isVacant',
+    absentee_owner: 'isAbsenteeOwner',
+  };
+
+  const updates: Record<string, boolean> = {};
+
+  for (const signal of signals) {
+    const field = flagMap[signal.signalType];
+    if (field) {
+      updates[field] = true;
+    }
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await prisma.property.update({
+      where: { id: propertyId },
+      data: updates,
+    });
+  }
 }
 
 // ============================================================

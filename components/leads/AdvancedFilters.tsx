@@ -23,6 +23,7 @@ interface Filters {
   timeSensitive: boolean;
   hasPhone: boolean;
   priority: string;
+  minCodeViolations: string;
 }
 
 interface AdvancedFiltersProps {
@@ -35,19 +36,20 @@ const SIGNAL_OPTIONS = [
   { type: 'pre_foreclosure', label: 'Pre-Foreclosure', category: 'distress' },
   { type: 'probate', label: 'Probate / Estate', category: 'distress' },
   { type: 'tax_delinquent', label: 'Tax Delinquent', category: 'distress' },
-  { type: 'bankruptcy', label: 'Bankruptcy', category: 'distress' },
+  { type: 'bankruptcy', label: 'Bankruptcy', category: 'financial' },
   { type: 'divorce', label: 'Divorce', category: 'distress' },
   { type: 'code_violation', label: 'Code Violation', category: 'distress' },
-  { type: 'vacant', label: 'Vacant', category: 'ownership' },
+  { type: 'liens_judgments', label: 'Liens / Judgments', category: 'distress' },
+  { type: 'owner_deceased', label: 'Owner Deceased', category: 'ownership' },
+  { type: 'inherited', label: 'Inherited', category: 'ownership' },
   { type: 'absentee_owner', label: 'Absentee Owner', category: 'ownership' },
   { type: 'tired_landlord', label: 'Tired Landlord', category: 'ownership' },
-  { type: 'out_of_state_owner', label: 'Out-of-State', category: 'ownership' },
-  { type: 'owner_deceased', label: 'Owner Deceased', category: 'timing' },
-  { type: 'long_ownership', label: 'Long-Term Owner', category: 'timing' },
-  { type: 'free_and_clear', label: 'Free & Clear', category: 'financial' },
-  { type: 'high_equity', label: 'High Equity', category: 'financial' },
-  { type: 'liens_judgments', label: 'Liens/Judgments', category: 'financial' },
-  { type: 'fire_flood_damage', label: 'Fire/Flood', category: 'condition' },
+  { type: 'out_of_state_owner', label: 'Out-of-State Owner', category: 'ownership' },
+  { type: 'job_loss_income_drop', label: 'Job Loss / Income Drop', category: 'financial' },
+  { type: 'high_equity', label: 'High Equity (50%+)', category: 'financial' },
+  { type: 'free_and_clear', label: 'Owned Free & Clear', category: 'financial' },
+  { type: 'vacant_property', label: 'Vacant Property', category: 'condition' },
+  { type: 'fire_flood_damage', label: 'Fire / Flood Damage', category: 'condition' },
   { type: 'deferred_maintenance', label: 'Deferred Maintenance', category: 'condition' },
 ];
 
@@ -66,6 +68,7 @@ const emptyFilters: Filters = {
   timeSensitive: false,
   hasPhone: false,
   priority: '',
+  minCodeViolations: '',
 };
 
 export function AdvancedFilters({ filters, onChange, filterOptions }: AdvancedFiltersProps) {
@@ -85,6 +88,7 @@ export function AdvancedFilters({ filters, onChange, filterOptions }: AdvancedFi
     if (f.timeSensitive) count++;
     if (f.hasPhone) count++;
     if (f.priority) count++;
+    if (f.minCodeViolations) count++;
     return count;
   }
 
@@ -288,7 +292,7 @@ export function AdvancedFilters({ filters, onChange, filterOptions }: AdvancedFi
               </div>
             </div>
 
-            {/* Score + ARV */}
+            {/* Score + ARV + Code Violations */}
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-secondary)' }}>
@@ -334,6 +338,22 @@ export function AdvancedFilters({ filters, onChange, filterOptions }: AdvancedFi
                     placeholder="Max $"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-secondary)' }}>
+                  Code Violations (min)
+                </label>
+                <select
+                  value={filters.minCodeViolations}
+                  onChange={(e) => onChange({ ...filters, minCodeViolations: e.target.value })}
+                  className="ws-input text-xs py-1 w-full"
+                >
+                  <option value="">Any</option>
+                  <option value="1">1+ violations</option>
+                  <option value="2">2+ violations</option>
+                  <option value="3">3+ violations</option>
+                  <option value="5">5+ violations</option>
+                </select>
               </div>
             </div>
           </div>

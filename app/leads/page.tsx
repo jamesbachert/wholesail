@@ -64,6 +64,7 @@ export default function LeadsPage() {
     if (advancedFilters.timeSensitive) params.set('timeSensitive', 'true');
     if (advancedFilters.hasPhone) params.set('hasPhone', 'true');
     if (advancedFilters.priority) params.set('priority', advancedFilters.priority);
+    if (advancedFilters.minCodeViolations) params.set('minCodeViolations', advancedFilters.minCodeViolations);
 
     return `/api/leads?${params.toString()}`;
   }, [isLive, sortField, sortDir, statusFilter, searchQuery, advancedFilters]);

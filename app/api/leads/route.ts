@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
     const timeSensitiveOnly = searchParams.get('timeSensitive');
     const hasPhone = searchParams.get('hasPhone');
     const priority = searchParams.get('priority');
+    const minCodeViolations = parseInt(searchParams.get('minCodeViolations') || '0');
 
     // Pagination
     const page = parseInt(searchParams.get('page') || '1');
@@ -126,8 +127,11 @@ export async function GET(request: NextRequest) {
     else if (sortBy === 'address') orderBy.property = { address: sortDir };
     else orderBy.totalScore = sortDir;
 
-    // Query
-    const [leads, total] = await Promise.all([
+    // When filtering by code violation count, fetch all matching leads first
+    // then post-filter (Prisma can't do HAVING on related record counts)
+    const usePostFilter = minCodeViolations > 0;
+
+    let [leads, total] = await Promise.all([
       prisma.lead.findMany({
         where,
         include: {
@@ -138,21 +142,36 @@ export async function GET(request: NextRequest) {
           },
         },
         orderBy,
-        skip,
-        take: limit,
+        skip: usePostFilter ? undefined : skip,
+        take: usePostFilter ? undefined : limit,
       }),
       prisma.lead.count({ where }),
     ]);
 
+    // Post-filter by code violation count
+    if (usePostFilter) {
+      leads = leads.filter((lead) => {
+        const cvCount = lead.signals.filter(
+          (s) => s.signalType === 'code_violation'
+        ).length;
+        return cvCount >= minCodeViolations;
+      });
+      total = leads.length;
+      leads = leads.slice(skip, skip + limit);
+    }
+
     // Get distinct cities and zip codes for filter dropdowns
     const filterOptions = await prisma.property.findMany({
-      where: { lead: { isNot: null } },
-      select: { city: true, zipCode: true },
-      distinct: ['city', 'zipCode'],
-    });
+  where: { lead: { isNot: null } },
+  select: { city: true, zipCode: true },
+});
 
-    const availableCities = [...new Set(filterOptions.map((p) => p.city))].sort();
-    const availableZipCodes = [...new Set(filterOptions.map((p) => p.zipCode))].sort();
+const availableCities = [...new Set(filterOptions.map((p) => p.city.toUpperCase()))]
+  .filter(Boolean)
+  .sort();
+const availableZipCodes = [...new Set(filterOptions.map((p) => p.zipCode))]
+  .filter(Boolean)
+  .sort();
 
     return NextResponse.json({
       leads,

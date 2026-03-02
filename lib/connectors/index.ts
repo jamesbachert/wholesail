@@ -2,6 +2,8 @@ import { DataSourceConnector } from './types';
 import { LehighSheriffSalesConnector } from './pa/lehigh-valley/lehigh-sheriff-sales';
 import { LehighRepositoryConnector } from './pa/lehigh-valley/lehigh-tax-repository';
 import { NorthamptonSheriffSalesConnector } from './pa/lehigh-valley/northampton-sheriff-sales';
+// NOTE: All LV connectors live in pa/lehigh-valley/ (no separate pa/northampton/ folder)
+import { AllentownCodeViolationsConnector } from './pa/lehigh-valley/allentown-code-violations';
 
 // ============================================================
 // CONNECTOR REGISTRY
@@ -13,9 +15,8 @@ const connectors: DataSourceConnector[] = [
   // Pennsylvania — Lehigh Valley
   new LehighSheriffSalesConnector(),
   new LehighRepositoryConnector(),
-
-  // Pennsylvania — Northampton County
   new NorthamptonSheriffSalesConnector(),
+  new AllentownCodeViolationsConnector(),
 ];
 
 const connectorMap = new Map<string, DataSourceConnector>(
@@ -37,8 +38,7 @@ export function getConnectorInfo() {
     type: c.type,
     regionSlug: c.regionSlug,
     description: c.description,
-    // Group by region for the UI
-    state: c.regionSlug === 'lehigh-valley' ? 'PA' : 'PA',
+    state: 'PA',
     region: c.regionSlug,
   }));
 }
