@@ -143,7 +143,13 @@ export class AllentownCodeViolationsConnector implements DataSourceConnector {
       attrs.POSTDIRECTION?.trim(),
     ].filter(Boolean);
 
-    const fullAddress = addressParts.join(' ').toUpperCase();
+    const fullAddress = addressParts.join(' ')
+      .split(' ')
+      .map((w) => {
+        if (w.match(/^\d/)) return w;
+        return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+      })
+      .join(' ');
 
     // Parse opened date from epoch milliseconds
     const openedDate = attrs.OPENEDDATE
@@ -164,7 +170,10 @@ export class AllentownCodeViolationsConnector implements DataSourceConnector {
 
     return {
       address: unit ? `${fullAddress} ${unit}` : fullAddress,
-      city: (attrs.CITY || 'ALLENTOWN').toUpperCase(),
+      city: (attrs.CITY || 'Allentown')
+        .split(' ')
+        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' '),
       state: attrs.STATE || 'PA',
       zipCode: attrs.POSTALCODE || '',
       county: 'Lehigh',

@@ -13,10 +13,13 @@ import {
   XCircle,
   ArrowRight,
   ExternalLink,
+  Loader2,
 } from 'lucide-react';
 import Link from 'next/link';
-import { mockLeads, getScoreColorHex, formatCurrency, getSignalTagColor } from '@/lib/mockData';
+import { useApi } from '@/lib/hooks';
+import { getScoreColorHex, formatCurrency, getSignalTagColor } from '@/lib/mockData';
 
+// Placeholder partner data — will be replaced by API once partner management is built
 const mockPartners = [
   {
     id: 'partner-001',
@@ -50,21 +53,16 @@ const mockPartners = [
   },
 ];
 
-const mockHandoffs = [
-  {
-    id: 'handoff-001',
-    leadId: 'lead-001',
-    partnerId: 'partner-001',
-    status: 'ACCEPTED',
-    whyHot: 'Probate + tax delinquent + high equity. Owner is motivated — recently widowed.',
-    sentAt: '2026-02-27T15:00:00Z',
-    respondedAt: '2026-02-27T16:30:00Z',
-  },
-];
+const mockHandoffs: any[] = [];
 
 export default function HandoffPage() {
   const [activeView, setActiveView] = useState<'handoffs' | 'partners'>('handoffs');
-  const hotLeads = mockLeads.filter((l) => l.totalScore >= 60 && l.status !== 'DEAD');
+
+  // Fetch hot leads from live database
+  const { data: leadsData, loading } = useApi<any>(
+    '/api/leads?sortBy=totalScore&sortDir=desc&limit=10&minScore=60'
+  );
+  const hotLeads = (leadsData as any)?.leads || [];
 
   return (
     <div className="max-w-6xl mx-auto space-y-4 pb-20 md:pb-6">
@@ -113,45 +111,59 @@ export default function HandoffPage() {
             <p className="text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
               High-scoring leads ready to be sent to a partner
             </p>
-            <div className="space-y-2">
-              {hotLeads.slice(0, 4).map((lead) => (
-                <div
-                  key={lead.id}
-                  className="flex items-center gap-3 p-3 rounded-lg transition-colors hover:bg-[var(--bg-elevated)]"
-                  style={{ backgroundColor: 'var(--bg-elevated)' }}
-                >
-                  <div
-                    className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                    style={{ backgroundColor: getScoreColorHex(lead.totalScore) }}
-                  >
-                    {lead.totalScore}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-                      {lead.property.address}, {lead.property.city}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      {lead.signals.slice(0, 2).map((s, i) => (
-                        <span key={i} className={`ws-tag ws-tag-${getSignalTagColor(s.signalType)} text-[10px]`}>
-                          {s.label}
-                        </span>
-                      ))}
+            {loading ? (
+              <div className="flex items-center gap-2 py-4" style={{ color: 'var(--text-secondary)' }}>
+                <Loader2 size={14} className="animate-spin" /> Loading leads...
+              </div>
+            ) : hotLeads.length > 0 ? (
+              <div className="space-y-2">
+                {hotLeads.slice(0, 4).map((lead: any) => {
+                  const prop = lead.property || lead;
+                  const signals = lead.signals || [];
+                  return (
+                    <div
+                      key={lead.id}
+                      className="flex items-center gap-3 p-3 rounded-lg transition-colors hover:bg-[var(--bg-elevated)]"
+                      style={{ backgroundColor: 'var(--bg-elevated)' }}
+                    >
+                      <div
+                        className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+                        style={{ backgroundColor: getScoreColorHex(lead.totalScore) }}
+                      >
+                        {lead.totalScore}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                          {prop.address}, {prop.city}
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          {signals.slice(0, 2).map((s: any, i: number) => (
+                            <span key={i} className={`ws-tag ws-tag-${getSignalTagColor(s.signalType)} text-[10px]`}>
+                              {s.label}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0 hidden sm:block">
+                        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                          {formatCurrency(prop.estimatedValue)}
+                        </p>
+                        <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                          {formatCurrency(prop.estimatedEquity)} equity
+                        </p>
+                      </div>
+                      <button className="ws-btn-primary text-xs shrink-0">
+                        <Send size={12} /> Hand Off
+                      </button>
                     </div>
-                  </div>
-                  <div className="text-right shrink-0 hidden sm:block">
-                    <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                      {formatCurrency(lead.property.estimatedValue)}
-                    </p>
-                    <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                      {formatCurrency(lead.property.estimatedEquity)} equity
-                    </p>
-                  </div>
-                  <button className="ws-btn-primary text-xs shrink-0">
-                    <Send size={12} /> Hand Off
-                  </button>
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm py-4" style={{ color: 'var(--text-tertiary)' }}>
+                No high-scoring leads available for hand-off yet.
+              </p>
+            )}
           </div>
 
           {/* Recent handoffs */}
@@ -163,18 +175,17 @@ export default function HandoffPage() {
                 </h3>
               </div>
               <div className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
-                {mockHandoffs.map((h) => {
-                  const lead = mockLeads.find((l) => l.id === h.leadId);
+                {mockHandoffs.map((h: any) => {
                   const partner = mockPartners.find((p) => p.id === h.partnerId);
-                  if (!lead || !partner) return null;
+                  if (!partner) return null;
                   return (
                     <div key={h.id} className="flex items-center gap-4 px-5 py-3.5">
                       <div className="flex-1 min-w-0">
-                        <Link href={`/leads/${lead.id}`} className="text-sm font-medium hover:underline" style={{ color: 'var(--text-primary)' }}>
-                          {lead.property.address}
-                        </Link>
+                        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                          Hand-off to {partner.name}
+                        </p>
                         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                          Sent to {partner.name} · {partner.company}
+                          {partner.company}
                         </p>
                       </div>
                       <span className={`ws-tag ws-tag-success text-[10px]`}>

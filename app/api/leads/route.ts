@@ -166,7 +166,7 @@ export async function GET(request: NextRequest) {
   select: { city: true, zipCode: true },
 });
 
-const availableCities = [...new Set(filterOptions.map((p) => p.city.toUpperCase()))]
+const availableCities = [...new Set(filterOptions.map((p) => p.city))]
   .filter(Boolean)
   .sort();
 const availableZipCodes = [...new Set(filterOptions.map((p) => p.zipCode))]
