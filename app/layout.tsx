@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { ThemeProvider } from '@/components/shared/ThemeProvider';
-import { DataModeProvider } from '@/components/shared/DataModeProvider';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
 import { SidebarProvider } from '@/components/layout/SidebarContext';
@@ -32,7 +31,6 @@ export default function RootLayout({
         style={{ fontFamily: 'var(--font-body)' }}
       >
         <ThemeProvider>
-          <DataModeProvider>
             <SidebarProvider>
               <div className="flex h-screen overflow-hidden">
                 {/* Desktop Sidebar */}
@@ -57,7 +55,6 @@ export default function RootLayout({
                 </div>
               </div>
             </SidebarProvider>
-          </DataModeProvider>
         </ThemeProvider>
       </body>
     </html>

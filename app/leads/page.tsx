@@ -10,10 +10,8 @@ import {
   Send,
   Loader2,
 } from 'lucide-react';
-import { useDataMode } from '@/components/shared/DataModeProvider';
 import { useApi } from '@/lib/hooks';
 import {
-  mockLeads,
   getScoreColorHex,
   getStatusLabel,
   getSignalTagColor,
@@ -29,7 +27,6 @@ type SortDir = 'asc' | 'desc';
 const statusFilters = ['ALL', 'NEW', 'CONTACTED', 'WARM', 'HOT', 'UNDER_CONTRACT', 'HANDED_OFF', 'CLOSED', 'DEAD'];
 
 export default function LeadsPage() {
-  const { isLive } = useDataMode();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sortField, setSortField] = useState<SortField>('totalScore');
@@ -38,10 +35,8 @@ export default function LeadsPage() {
   const [advancedFilters, setAdvancedFilters] = useState<Filters>(emptyFilters);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({ cities: [], zipCodes: [] });
 
-  // Build API URL with all filters for live mode
+  // Build API URL with all filters
   const apiUrl = useMemo(() => {
-    if (!isLive) return null;
-
     const params = new URLSearchParams();
     params.set('sortBy', sortField);
     params.set('sortDir', sortDir);
@@ -67,7 +62,7 @@ export default function LeadsPage() {
     if (advancedFilters.minCodeViolations) params.set('minCodeViolations', advancedFilters.minCodeViolations);
 
     return `/api/leads?${params.toString()}`;
-  }, [isLive, sortField, sortDir, statusFilter, searchQuery, advancedFilters]);
+  }, [sortField, sortDir, statusFilter, searchQuery, advancedFilters]);
 
   const { data: liveData, loading } = useApi<any>(apiUrl);
 
@@ -78,51 +73,17 @@ export default function LeadsPage() {
     }
   }, [liveData]);
 
-  // Get leads from appropriate source
+  // Get leads from API
   const allLeads = useMemo(() => {
-    if (isLive && liveData) {
-      return (liveData.leads || []).map((lead: any) => ({
-        ...lead,
-        signals: lead.signals || [],
-        contactHistory: lead.contacts || [],
-      }));
-    }
+    if (!liveData) return [];
+    return (liveData.leads || []).map((lead: any) => ({
+      ...lead,
+      signals: lead.signals || [],
+      contactHistory: lead.contacts || [],
+    }));
+  }, [liveData]);
 
-    // Mock data with client-side filtering/sorting
-    let leads = [...mockLeads];
-
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      leads = leads.filter(
-        (l) =>
-          l.property.address.toLowerCase().includes(q) ||
-          l.property.city.toLowerCase().includes(q) ||
-          l.property.ownerName.toLowerCase().includes(q) ||
-          l.property.zipCode.includes(q)
-      );
-    }
-
-    if (statusFilter !== 'ALL') {
-      leads = leads.filter((l) => l.status === statusFilter);
-    }
-
-    leads.sort((a, b) => {
-      let aVal: number, bVal: number;
-      switch (sortField) {
-        case 'totalScore': aVal = a.totalScore; bVal = b.totalScore; break;
-        case 'createdAt': aVal = new Date(a.firstDiscovered).getTime(); bVal = new Date(b.firstDiscovered).getTime(); break;
-        case 'lastActivityAt': aVal = new Date(a.firstDiscovered).getTime(); bVal = new Date(b.firstDiscovered).getTime(); break;
-        case 'lastContacted': aVal = a.lastContacted ? new Date(a.lastContacted).getTime() : 0; bVal = b.lastContacted ? new Date(b.lastContacted).getTime() : 0; break;
-        case 'estimatedValue': aVal = a.property.estimatedValue; bVal = b.property.estimatedValue; break;
-        default: aVal = a.totalScore; bVal = b.totalScore;
-      }
-      return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
-    });
-
-    return leads;
-  }, [isLive, liveData, searchQuery, statusFilter, sortField, sortDir]);
-
-  const totalCount = isLive && liveData ? liveData.total : allLeads.length;
+  const totalCount = liveData ? liveData.total : allLeads.length;
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -277,7 +238,7 @@ export default function LeadsPage() {
                         {lead.isTimeSensitive && <AlertTriangle size={14} style={{ color: 'var(--danger)' }} className="shrink-0" />}
                       </div>
                       <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>
-                        {prop.city}, {prop.state} {prop.zipCode} · {prop.ownerName}
+                        {prop.city}, {prop.state} {prop.zipCode} · {prop.ownerName || '—'}
                       </p>
                     </Link>
                     <div className="flex flex-wrap gap-1">
@@ -311,7 +272,7 @@ export default function LeadsPage() {
                         {lead.isTimeSensitive && <AlertTriangle size={12} style={{ color: 'var(--danger)' }} className="shrink-0" />}
                       </div>
                       <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>
-                        {prop.city} · {prop.ownerName} · {formatCurrency(prop.estimatedValue || 0)}
+                        {prop.city} · {prop.ownerName || '—'} · {formatCurrency(prop.estimatedValue || 0)}
                       </p>
                       <div className="flex flex-wrap gap-1 mt-1.5">
                         {signals.slice(0, 3).map((s: any, i: number) => (
@@ -331,7 +292,7 @@ export default function LeadsPage() {
           {allLeads.length === 0 && !loading && (
             <div className="px-5 py-12 text-center">
               <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {isLive ? 'No leads match your filters. Try adjusting your search or filters.' : 'No leads match your filters'}
+                No leads match your filters. Try adjusting your search or filters.
               </p>
             </div>
           )}

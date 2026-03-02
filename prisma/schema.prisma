@@ -79,6 +79,7 @@ model Property {
   ownershipLength Int?
 
   isVacant        Boolean  @default(false)
+  isRentalProperty Boolean? // Yes/No — can be set by connector (e.g. Allentown rental license DB) or manually
   hasCodeViolations Boolean @default(false)
 
   latitude        Float?

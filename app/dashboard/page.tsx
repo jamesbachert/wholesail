@@ -10,57 +10,36 @@ import {
   Users,
   Target,
   Flame,
-  Zap,
   Calendar,
   CheckCircle2,
   Loader2,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useDataMode } from '@/components/shared/DataModeProvider';
 import { useApi } from '@/lib/hooks';
 import {
-  mockLeads,
-  mockNotifications,
-  mockDashboardStats,
   getScoreColorHex,
   getStatusLabel,
   getSignalTagColor,
   formatCurrency,
-  timeAgo,
 } from '@/lib/mockData';
 
 export default function DashboardPage() {
-  const { isLive } = useDataMode();
-
-  // Live data hooks (only fetch when in live mode)
-  const { data: liveLeadsData, loading: leadsLoading } = useApi(
-    isLive ? '/api/leads?sortBy=totalScore&sortDir=desc&limit=5' : null
+  const { data: liveLeadsData, loading: leadsLoading } = useApi<any>(
+    '/api/leads?sortBy=totalScore&sortDir=desc&limit=5'
   );
-  const { data: liveStats, loading: statsLoading } = useApi<any>(
-    isLive ? '/api/dashboard' : null
-  );
+  const { data: liveStats, loading: statsLoading } = useApi<any>('/api/dashboard');
 
-  // Use mock or live data
-  const stats = isLive && liveStats ? liveStats : mockDashboardStats;
-  const priorityLeads = isLive && liveLeadsData
-    ? (liveLeadsData as any).leads?.slice(0, 5) || []
-    : [...mockLeads].sort((a, b) => b.totalScore - a.totalScore).slice(0, 5);
-  const notifications = isLive ? [] : mockNotifications;
+  const stats = liveStats || {};
+  const priorityLeads = (liveLeadsData as any)?.leads?.slice(0, 5) || [];
 
-  const timeSensitiveLeads = isLive
-    ? priorityLeads.filter((l: any) => l.isTimeSensitive)
-    : mockLeads.filter((l) => l.isTimeSensitive);
-  const followUpsDue = isLive
-    ? priorityLeads.filter((l: any) => l.nextFollowUp)
-    : mockLeads.filter((l) => l.nextFollowUp);
-  const unreadNotifications = notifications.filter((n: any) => !n.isRead);
+  const followUpsDue = priorityLeads.filter((l: any) => l.nextFollowUp);
 
-  const isLoading = isLive && (leadsLoading || statsLoading);
+  const isLoading = leadsLoading || statsLoading;
 
-  // Helper to normalize lead data shape (DB vs mock have slightly different structures)
+  // Helper to normalize lead data shape
   const normalizeLead = (lead: any) => {
-    if (lead.property) return lead; // already has property nested
-    return { ...lead, property: lead }; // mock format
+    if (lead.property) return lead;
+    return { ...lead, property: lead };
   };
 
   return (
@@ -82,44 +61,7 @@ export default function DashboardPage() {
       {isLoading && (
         <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
           <Loader2 size={16} className="animate-spin" />
-          Loading live data...
-        </div>
-      )}
-
-      {/* Urgent Alerts */}
-      {unreadNotifications.length > 0 && (
-        <div
-          className="ws-card p-4 border-l-4"
-          style={{ borderLeftColor: 'var(--danger)' }}
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <AlertTriangle size={18} style={{ color: 'var(--danger)' }} />
-            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-              {unreadNotifications.length} new alert{unreadNotifications.length > 1 ? 's' : ''}
-            </span>
-          </div>
-          <div className="space-y-2">
-            {unreadNotifications.map((n: any) => (
-              <Link
-                key={n.id}
-                href={n.leadId ? `/leads/${n.leadId}` : '#'}
-                className="flex items-start gap-3 p-2 rounded-lg transition-colors duration-200 hover:bg-[var(--bg-elevated)]"
-              >
-                <Zap size={14} className="mt-0.5 shrink-0" style={{ color: 'var(--brand-cyan)' }} />
-                <div>
-                  <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                    {n.title}
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                    {n.message}
-                  </p>
-                </div>
-                <span className="text-xs shrink-0 ml-auto" style={{ color: 'var(--text-tertiary)' }}>
-                  {timeAgo(n.createdAt)}
-                </span>
-              </Link>
-            ))}
-          </div>
+          Loading data...
         </div>
       )}
 
@@ -207,7 +149,7 @@ export default function DashboardPage() {
                           )}
                         </div>
                         <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }}>
-                          {l.property.city} · {l.property.ownerName} · {formatCurrency(l.property.estimatedValue)}
+                          {l.property.city} · {l.property.ownerName || '—'} · {formatCurrency(l.property.estimatedValue)}
                         </p>
                       </div>
                       <div className="hidden md:flex items-center gap-1.5 shrink-0">
@@ -236,7 +178,7 @@ export default function DashboardPage() {
               ) : (
                 <div className="px-5 py-8 text-center">
                   <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                    {isLive ? 'No leads in database yet. Import your first leads to get started.' : 'No leads found.'}
+                    {isLoading ? '' : 'No leads in database yet. Import your first leads to get started.'}
                   </p>
                 </div>
               )}
@@ -303,7 +245,7 @@ export default function DashboardPage() {
                           {l.property.address}
                         </p>
                         <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                          {l.property.ownerName}
+                          {l.property.ownerName || '—'}
                         </p>
                       </div>
                       <span className="text-[10px] shrink-0" style={{ color: 'var(--text-tertiary)' }}>
@@ -340,7 +282,7 @@ export default function DashboardPage() {
 }
 
 // ============================================================
-// SUB-COMPONENTS (same as before)
+// SUB-COMPONENTS
 // ============================================================
 
 function StatCard({

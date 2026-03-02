@@ -24,11 +24,11 @@ import {
   FileText,
   Loader2,
   Zap,
+  Check,
+  X,
 } from 'lucide-react';
-import { useDataMode } from '@/components/shared/DataModeProvider';
-import { useApi, apiPost } from '@/lib/hooks';
+import { useApi, apiPost, apiPatch } from '@/lib/hooks';
 import {
-  mockLeads,
   getScoreColorHex,
   getStatusLabel,
   getSignalTagColor,
@@ -43,10 +43,7 @@ import { CallDialog } from '@/components/leads/CallDialog';
 export default function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { isLive } = useDataMode();
-  const { data: liveLead, loading, refetch } = useApi<any>(
-    isLive ? `/api/leads/${id}` : null
-  );
+  const { data: lead, loading, refetch } = useApi<any>(`/api/leads/${id}`);
 
   const [activeTab, setActiveTab] = useState<'overview' | 'signals' | 'timeline' | 'notes'>('overview');
   const [prevTab, setPrevTab] = useState<string>('overview');
@@ -63,10 +60,6 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     setPrevTab(activeTab);
     setActiveTab(tab);
   };
-
-  // Get lead from appropriate source
-  const mockLead = mockLeads.find((l) => l.id === id);
-  const lead = isLive ? liveLead : mockLead;
 
   if (loading) {
     return (
@@ -90,7 +83,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   // Normalize data shape
   const property = lead.property || lead;
   const signals = lead.signals || [];
-  const contactHistory = lead.contacts || lead.contactHistory || [];
+  const contactHistory = lead.contacts || [];
   const notes = lead.notes || [];
 
   // Signal summary for overview tab
@@ -98,7 +91,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const distressSignals = activeSignals.filter((s: any) => s.category === 'distress');
 
   const handleAddNote = async () => {
-    if (!newNote.trim() || !isLive) return;
+    if (!newNote.trim()) return;
     setSavingNote(true);
     try {
       await apiPost(`/api/leads/${id}/notes`, { content: newNote.trim() });
@@ -211,6 +204,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             signals={activeSignals}
             distressSignals={distressSignals}
             onViewSignals={() => handleTabChange('signals')}
+            leadId={id}
+            refetch={refetch}
           />
         )}
         {activeTab === 'signals' && (
@@ -233,7 +228,6 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             setNewNote={setNewNote}
             onAddNote={handleAddNote}
             saving={savingNote}
-            isLive={isLive}
           />
         )}
       </div>
@@ -257,7 +251,122 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 // OVERVIEW TAB
 // ============================================================
 
-function OverviewTab({ property, lead, signals, distressSignals, onViewSignals }: any) {
+function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, leadId, refetch }: any) {
+  const [editingProperty, setEditingProperty] = useState(false);
+  const [editingOwner, setEditingOwner] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Property Details edit state
+  const [propForm, setPropForm] = useState({
+    propertyType: property.propertyType || '',
+    bedrooms: property.bedrooms != null ? String(property.bedrooms) : '',
+    bathrooms: property.bathrooms != null ? String(property.bathrooms) : '',
+    sqft: property.sqft != null ? String(property.sqft) : '',
+    yearBuilt: property.yearBuilt != null ? String(property.yearBuilt) : '',
+    county: property.county || '',
+    isVacant: property.isVacant ?? false,
+    isAbsenteeOwner: property.isAbsenteeOwner ?? false,
+    isRentalProperty: property.isRentalProperty ?? null,
+  });
+
+  // Owner Info edit state
+  const [ownerForm, setOwnerForm] = useState({
+    ownerName: property.ownerName || '',
+    ownerPhone: property.ownerPhone || '',
+    ownerEmail: property.ownerEmail || '',
+    ownerMailingAddress: property.ownerMailingAddress || '',
+    ownerCity: property.ownerCity || '',
+    ownerState: property.ownerState || '',
+    ownerZip: property.ownerZip || '',
+  });
+
+  const handleSaveProperty = async () => {
+    setSaving(true);
+    try {
+      await apiPatch(`/api/leads/${leadId}`, {
+        property: {
+          propertyType: propForm.propertyType || null,
+          bedrooms: propForm.bedrooms ? parseInt(propForm.bedrooms) : null,
+          bathrooms: propForm.bathrooms ? parseFloat(propForm.bathrooms) : null,
+          sqft: propForm.sqft ? parseInt(propForm.sqft) : null,
+          yearBuilt: propForm.yearBuilt ? parseInt(propForm.yearBuilt) : null,
+          county: propForm.county || null,
+          isVacant: propForm.isVacant,
+          isAbsenteeOwner: propForm.isAbsenteeOwner,
+          isRentalProperty: propForm.isRentalProperty,
+        },
+      });
+      setEditingProperty(false);
+      refetch();
+    } catch (err) {
+      console.error('Failed to update property:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveOwner = async () => {
+    setSaving(true);
+    try {
+      await apiPatch(`/api/leads/${leadId}`, {
+        property: {
+          ownerName: ownerForm.ownerName || null,
+          ownerPhone: ownerForm.ownerPhone || null,
+          ownerEmail: ownerForm.ownerEmail || null,
+          ownerMailingAddress: ownerForm.ownerMailingAddress || null,
+          ownerCity: ownerForm.ownerCity || null,
+          ownerState: ownerForm.ownerState || null,
+          ownerZip: ownerForm.ownerZip || null,
+        },
+      });
+      setEditingOwner(false);
+      refetch();
+    } catch (err) {
+      console.error('Failed to update owner:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancelPropertyEdit = () => {
+    setPropForm({
+      propertyType: property.propertyType || '',
+      bedrooms: property.bedrooms != null ? String(property.bedrooms) : '',
+      bathrooms: property.bathrooms != null ? String(property.bathrooms) : '',
+      sqft: property.sqft != null ? String(property.sqft) : '',
+      yearBuilt: property.yearBuilt != null ? String(property.yearBuilt) : '',
+      county: property.county || '',
+      isVacant: property.isVacant ?? false,
+      isAbsenteeOwner: property.isAbsenteeOwner ?? false,
+      isRentalProperty: property.isRentalProperty ?? null,
+    });
+    setEditingProperty(false);
+  };
+
+  const cancelOwnerEdit = () => {
+    setOwnerForm({
+      ownerName: property.ownerName || '',
+      ownerPhone: property.ownerPhone || '',
+      ownerEmail: property.ownerEmail || '',
+      ownerMailingAddress: property.ownerMailingAddress || '',
+      ownerCity: property.ownerCity || '',
+      ownerState: property.ownerState || '',
+      ownerZip: property.ownerZip || '',
+    });
+    setEditingOwner(false);
+  };
+
+  // Helper to format mailing address
+  const formatMailingAddress = () => {
+    const addr = property.ownerMailingAddress;
+    const city = property.ownerCity;
+    const state = property.ownerState;
+    const zip = property.ownerZip;
+    if (!addr && !city && !state && !zip) return null;
+    const parts = [addr, [city, state].filter(Boolean).join(', '), zip].filter(Boolean);
+    return parts.join(' ');
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
       <div className="lg:col-span-2 space-y-4">
@@ -301,71 +410,165 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals }
 
         {/* Property Details */}
         <div className="ws-card p-5">
-          <h3 className="text-sm font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-            <Home size={16} style={{ color: 'var(--brand-deep)' }} /> Property Details
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {property.propertyType && <DetailItem label="Type" value={property.propertyType} />}
-            {property.bedrooms != null && <DetailItem label="Bedrooms" value={`${property.bedrooms}`} />}
-            {property.bathrooms != null && <DetailItem label="Bathrooms" value={`${property.bathrooms}`} />}
-            {property.sqft != null && <DetailItem label="Sq Ft" value={property.sqft.toLocaleString()} />}
-            {property.yearBuilt != null && <DetailItem label="Year Built" value={`${property.yearBuilt}`} />}
-            {property.county && <DetailItem label="County" value={property.county} />}
-            <DetailItem label="Zip Code" value={property.zipCode} />
-            {property.isVacant != null && <DetailItem label="Vacant" value={property.isVacant ? 'Yes' : 'No'} highlight={property.isVacant} />}
-            {property.isAbsenteeOwner != null && <DetailItem label="Absentee Owner" value={property.isAbsenteeOwner ? 'Yes' : 'No'} highlight={property.isAbsenteeOwner} />}
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              <Home size={16} style={{ color: 'var(--brand-deep)' }} /> Property Details
+            </h3>
+            {!editingProperty ? (
+              <button
+                onClick={() => setEditingProperty(true)}
+                className="ws-btn-ghost text-xs p-1.5 rounded-md"
+                title="Edit property details"
+              >
+                <Pencil size={14} />
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <button onClick={cancelPropertyEdit} className="ws-btn-ghost text-xs p-1.5 rounded-md" title="Cancel">
+                  <X size={14} />
+                </button>
+                <button
+                  onClick={handleSaveProperty}
+                  disabled={saving}
+                  className="ws-btn-primary text-xs px-2.5 py-1.5 rounded-md flex items-center gap-1"
+                >
+                  {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                  Save
+                </button>
+              </div>
+            )}
           </div>
+
+          {editingProperty ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <EditField label="Type" value={propForm.propertyType} onChange={(v) => setPropForm({ ...propForm, propertyType: v })} />
+              <EditField label="Bedrooms" value={propForm.bedrooms} onChange={(v) => setPropForm({ ...propForm, bedrooms: v })} type="number" />
+              <EditField label="Bathrooms" value={propForm.bathrooms} onChange={(v) => setPropForm({ ...propForm, bathrooms: v })} type="number" />
+              <EditField label="Sq Ft" value={propForm.sqft} onChange={(v) => setPropForm({ ...propForm, sqft: v })} type="number" />
+              <EditField label="Year Built" value={propForm.yearBuilt} onChange={(v) => setPropForm({ ...propForm, yearBuilt: v })} type="number" />
+              <EditField label="County" value={propForm.county} onChange={(v) => setPropForm({ ...propForm, county: v })} />
+              <DetailItem label="Zip Code" value={property.zipCode} />
+              <ToggleField label="Vacant" value={propForm.isVacant} onChange={(v) => setPropForm({ ...propForm, isVacant: v })} />
+              <ToggleField label="Absentee Owner" value={propForm.isAbsenteeOwner} onChange={(v) => setPropForm({ ...propForm, isAbsenteeOwner: v })} />
+              <TriStateField label="Rental Property" value={propForm.isRentalProperty} onChange={(v) => setPropForm({ ...propForm, isRentalProperty: v })} />
+
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <DetailItem label="Type" value={property.propertyType || '—'} />
+              <DetailItem label="Bedrooms" value={property.bedrooms != null ? `${property.bedrooms}` : '—'} />
+              <DetailItem label="Bathrooms" value={property.bathrooms != null ? `${property.bathrooms}` : '—'} />
+              <DetailItem label="Sq Ft" value={property.sqft != null ? property.sqft.toLocaleString() : '—'} />
+              <DetailItem label="Year Built" value={property.yearBuilt != null ? `${property.yearBuilt}` : '—'} />
+              <DetailItem label="County" value={property.county || '—'} />
+              <DetailItem label="Zip Code" value={property.zipCode || '—'} />
+              <DetailItem label="Vacant" value={property.isVacant != null ? (property.isVacant ? 'Yes' : 'No') : '—'} highlight={property.isVacant} />
+              <DetailItem label="Absentee Owner" value={property.isAbsenteeOwner != null ? (property.isAbsenteeOwner ? 'Yes' : 'No') : '—'} highlight={property.isAbsenteeOwner} />
+              <DetailItem label="Rental Property" value={property.isRentalProperty != null ? (property.isRentalProperty ? 'Yes' : 'No') : '—'} highlight={property.isRentalProperty} />
+            </div>
+          )}
         </div>
 
         {/* Financial */}
-        {(property.assessedValue || property.estimatedValue) && (
-          <div className="ws-card p-5">
-            <h3 className="text-sm font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-              <DollarSign size={16} style={{ color: 'var(--brand-deep)' }} /> Financial
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {property.assessedValue != null && <DetailItem label="Assessed Value" value={formatCurrency(property.assessedValue)} />}
-              {property.estimatedValue != null && <DetailItem label="Estimated ARV" value={formatCurrency(property.estimatedValue)} />}
-              {property.estimatedEquity != null && <DetailItem label="Estimated Equity" value={formatCurrency(property.estimatedEquity)} highlight />}
-              {property.estimatedValue && property.estimatedEquity && (
-                <DetailItem label="Equity %" value={`${Math.round((property.estimatedEquity / property.estimatedValue) * 100)}%`} highlight />
-              )}
-              {property.ownershipLengthMonths != null && (
-                <DetailItem label="Ownership" value={`${Math.round(property.ownershipLengthMonths / 12)} years`} />
-              )}
-            </div>
+        <div className="ws-card p-5">
+          <h3 className="text-sm font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+            <DollarSign size={16} style={{ color: 'var(--brand-deep)' }} /> Financial
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <DetailItem label="Assessed Value" value={property.assessedValue != null ? formatCurrency(property.assessedValue) : '—'} />
+            <DetailItem label="Estimated ARV" value={property.estimatedValue != null ? formatCurrency(property.estimatedValue) : '—'} />
+            <DetailItem label="Estimated Equity" value={property.estimatedEquity != null ? formatCurrency(property.estimatedEquity) : '—'} highlight={property.estimatedEquity != null} />
+            <DetailItem label="Equity %" value={property.estimatedValue && property.estimatedEquity ? `${Math.round((property.estimatedEquity / property.estimatedValue) * 100)}%` : '—'} highlight={!!(property.estimatedValue && property.estimatedEquity)} />
+            <DetailItem label="Ownership" value={property.ownershipLengthMonths != null || property.ownershipLength != null ? `${Math.round((property.ownershipLengthMonths ?? property.ownershipLength) / 12)} years` : '—'} />
           </div>
-        )}
+        </div>
 
         {/* Owner Info */}
         <div className="ws-card p-5">
-          <h3 className="text-sm font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-            <User size={16} style={{ color: 'var(--brand-deep)' }} /> Owner Information
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {property.ownerName && <DetailItem label="Name" value={property.ownerName} />}
-            {property.ownerPhone && (
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>Phone</p>
-                <a href={`tel:${property.ownerPhone}`} className="text-sm font-medium flex items-center gap-1.5 hover:underline" style={{ color: 'var(--brand-ocean)' }}>
-                  <Phone size={12} /> {property.ownerPhone}
-                </a>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              <User size={16} style={{ color: 'var(--brand-deep)' }} /> Owner Information
+            </h3>
+            {!editingOwner ? (
+              <button
+                onClick={() => setEditingOwner(true)}
+                className="ws-btn-ghost text-xs p-1.5 rounded-md"
+                title="Edit owner information"
+              >
+                <Pencil size={14} />
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <button onClick={cancelOwnerEdit} className="ws-btn-ghost text-xs p-1.5 rounded-md" title="Cancel">
+                  <X size={14} />
+                </button>
+                <button
+                  onClick={handleSaveOwner}
+                  disabled={saving}
+                  className="ws-btn-primary text-xs px-2.5 py-1.5 rounded-md flex items-center gap-1"
+                >
+                  {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                  Save
+                </button>
               </div>
-            )}
-            {property.ownerEmail && (
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>Email</p>
-                <a href={`mailto:${property.ownerEmail}`} className="text-sm font-medium flex items-center gap-1.5 hover:underline" style={{ color: 'var(--brand-ocean)' }}>
-                  <Mail size={12} /> {property.ownerEmail}
-                </a>
-              </div>
-            )}
-            {!property.ownerName && !property.ownerPhone && !property.ownerEmail && (
-              <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                No owner contact info yet. This data may be enriched from additional sources.
-              </p>
             )}
           </div>
+
+          {editingOwner ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <EditField label="Name" value={ownerForm.ownerName} onChange={(v) => setOwnerForm({ ...ownerForm, ownerName: v })} />
+              <EditField label="Phone" value={ownerForm.ownerPhone} onChange={(v) => setOwnerForm({ ...ownerForm, ownerPhone: v })} type="tel" />
+              <EditField label="Email" value={ownerForm.ownerEmail} onChange={(v) => setOwnerForm({ ...ownerForm, ownerEmail: v })} type="email" />
+              <div className="md:col-span-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Mailing Address</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="md:col-span-2">
+                    <EditField label="Street" value={ownerForm.ownerMailingAddress} onChange={(v) => setOwnerForm({ ...ownerForm, ownerMailingAddress: v })} />
+                  </div>
+                  <EditField label="City" value={ownerForm.ownerCity} onChange={(v) => setOwnerForm({ ...ownerForm, ownerCity: v })} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <EditField label="State" value={ownerForm.ownerState} onChange={(v) => setOwnerForm({ ...ownerForm, ownerState: v })} />
+                    <EditField label="Zip" value={ownerForm.ownerZip} onChange={(v) => setOwnerForm({ ...ownerForm, ownerZip: v })} />
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <DetailItem label="Name" value={property.ownerName || '—'} />
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>Phone</p>
+                {property.ownerPhone ? (
+                  <a href={`tel:${property.ownerPhone}`} className="text-sm font-medium flex items-center gap-1.5 hover:underline" style={{ color: 'var(--brand-ocean)' }}>
+                    <Phone size={12} /> {property.ownerPhone}
+                  </a>
+                ) : (
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>—</p>
+                )}
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>Email</p>
+                {property.ownerEmail ? (
+                  <a href={`mailto:${property.ownerEmail}`} className="text-sm font-medium flex items-center gap-1.5 hover:underline" style={{ color: 'var(--brand-ocean)' }}>
+                    <Mail size={12} /> {property.ownerEmail}
+                  </a>
+                ) : (
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>—</p>
+                )}
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>Mailing Address</p>
+                {formatMailingAddress() ? (
+                  <p className="text-sm font-medium flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
+                    <MapPin size={12} style={{ color: 'var(--text-tertiary)' }} /> {formatMailingAddress()}
+                  </p>
+                ) : (
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>—</p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -417,17 +620,11 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals }
             <Calendar size={16} style={{ color: 'var(--brand-deep)' }} /> Key Dates
           </h3>
           <div className="space-y-2.5">
-            {lead.createdAt && (
-              <DateRow label="Created" value={formatDate(lead.createdAt)} />
-            )}
-            {lead.lastActivityAt && (
-              <DateRow label="Last Activity" value={formatDate(lead.lastActivityAt)} />
-            )}
-            {lead.lastSignalAt && (
-              <DateRow label="Last Signal" value={formatDate(lead.lastSignalAt)} />
-            )}
-            {lead.lastContacted && <DateRow label="Last Contacted" value={formatDate(lead.lastContacted)} />}
-            {lead.nextFollowUp && <DateRow label="Next Follow-Up" value={formatDate(lead.nextFollowUp)} highlight />}
+            <DateRow label="Created" value={lead.createdAt ? formatDate(lead.createdAt) : '—'} />
+            <DateRow label="Last Activity" value={lead.lastActivityAt ? formatDate(lead.lastActivityAt) : '—'} />
+            <DateRow label="Last Signal" value={lead.lastSignalAt ? formatDate(lead.lastSignalAt) : '—'} />
+            <DateRow label="Last Contacted" value={lead.lastContacted ? formatDate(lead.lastContacted) : '—'} />
+            <DateRow label="Next Follow-Up" value={lead.nextFollowUp ? formatDate(lead.nextFollowUp) : '—'} highlight={!!lead.nextFollowUp} />
           </div>
         </div>
       </div>
@@ -529,7 +726,7 @@ function TimelineTab({ contactHistory }: { contactHistory: any[] }) {
 // NOTES TAB
 // ============================================================
 
-function NotesTab({ notes, newNote, setNewNote, onAddNote, saving, isLive }: any) {
+function NotesTab({ notes, newNote, setNewNote, onAddNote, saving }: any) {
   return (
     <div className="space-y-4">
       <div className="ws-card p-4">
@@ -541,12 +738,11 @@ function NotesTab({ notes, newNote, setNewNote, onAddNote, saving, isLive }: any
           className="ws-input resize-none"
         />
         <div className="flex items-center justify-between mt-2">
-          {!isLive && <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>Switch to Live DB mode to save notes</p>}
           <div className="flex-1" />
           <button
             onClick={onAddNote}
             className="ws-btn-primary text-xs"
-            disabled={!newNote.trim() || saving || !isLive}
+            disabled={!newNote.trim() || saving}
           >
             {saving ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : <><Plus size={14} /> Add Note</>}
           </button>
@@ -580,19 +776,77 @@ function NotesTab({ notes, newNote, setNewNote, onAddNote, saving, isLive }: any
 // ============================================================
 
 function DetailItem({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  const isEmpty = value === '—';
   return (
     <div>
       <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
-      <p className="text-sm font-medium" style={{ color: highlight ? 'var(--brand-deep)' : 'var(--text-primary)' }}>{value}</p>
+      <p className="text-sm font-medium" style={{ color: isEmpty ? 'var(--text-tertiary)' : highlight ? 'var(--brand-deep)' : 'var(--text-primary)' }}>{value}</p>
+    </div>
+  );
+}
+
+function EditField({ label, value, onChange, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
+  return (
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="ws-input text-sm py-1.5 px-2.5 w-full"
+        placeholder="—"
+      />
+    </div>
+  );
+}
+
+function ToggleField({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => onChange(!value)}
+          className={`relative w-9 h-5 rounded-full transition-colors duration-200 ${value ? '' : ''}`}
+          style={{ backgroundColor: value ? 'var(--brand-deep)' : 'var(--border-primary)' }}
+        >
+          <span
+            className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-200"
+            style={{ transform: value ? 'translateX(16px)' : 'translateX(0)' }}
+          />
+        </button>
+        <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{value ? 'Yes' : 'No'}</span>
+      </div>
+    </div>
+  );
+}
+
+function TriStateField({ label, value, onChange }: { label: string; value: boolean | null; onChange: (v: boolean | null) => void }) {
+  return (
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
+      <select
+        value={value === null ? '' : value ? 'yes' : 'no'}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange(v === '' ? null : v === 'yes');
+        }}
+        className="ws-input text-sm py-1.5 px-2.5 w-full"
+      >
+        <option value="">Unknown</option>
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
+      </select>
     </div>
   );
 }
 
 function DateRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  const isEmpty = value === '—';
   return (
     <div className="flex items-center justify-between">
       <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{label}</span>
-      <span className="text-xs font-medium" style={{ color: highlight ? 'var(--brand-deep)' : 'var(--text-primary)' }}>{value}</span>
+      <span className="text-xs font-medium" style={{ color: isEmpty ? 'var(--text-tertiary)' : highlight ? 'var(--brand-deep)' : 'var(--text-primary)' }}>{value}</span>
     </div>
   );
 }

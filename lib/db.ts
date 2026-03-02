@@ -199,6 +199,35 @@ export async function createLeadFromProperty(data: {
 }
 
 // ============================================================
+// PROPERTY UPDATES
+// ============================================================
+
+export async function updateProperty(propertyId: string, data: {
+  propertyType?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  sqft?: number;
+  yearBuilt?: number;
+  county?: string;
+  isVacant?: boolean;
+  isAbsenteeOwner?: boolean;
+  isRentalProperty?: boolean | null;
+  ownerName?: string;
+  ownerPhone?: string;
+  ownerPhone2?: string;
+  ownerEmail?: string;
+  ownerMailingAddress?: string;
+  ownerCity?: string;
+  ownerState?: string;
+  ownerZip?: string;
+}) {
+  return prisma.property.update({
+    where: { id: propertyId },
+    data,
+  });
+}
+
+// ============================================================
 // CONTACTS
 // ============================================================
 

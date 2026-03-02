@@ -1,13 +1,11 @@
 'use client';
 
-import { Sun, Moon, Bell, Search, MapPin, Database, Zap } from 'lucide-react';
+import { Sun, Moon, Bell, Search, MapPin } from 'lucide-react';
 import { useTheme } from '@/components/shared/ThemeProvider';
-import { useDataMode } from '@/components/shared/DataModeProvider';
 import { useState } from 'react';
 
 export function TopBar() {
   const { theme, toggleTheme } = useTheme();
-  const { dataMode, toggleDataMode, isLive } = useDataMode();
   const [searchFocused, setSearchFocused] = useState(false);
 
   return (
@@ -44,21 +42,6 @@ export function TopBar() {
 
       {/* Right side controls */}
       <div className="flex items-center gap-2">
-        {/* Data Mode Toggle */}
-        <button
-          onClick={toggleDataMode}
-          className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
-          style={{
-            backgroundColor: isLive ? 'rgba(16, 185, 129, 0.1)' : 'var(--bg-elevated)',
-            color: isLive ? 'var(--success)' : 'var(--text-secondary)',
-            border: isLive ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid transparent',
-          }}
-          title={`Switch to ${isLive ? 'mock' : 'live'} data`}
-        >
-          {isLive ? <Zap size={14} /> : <Database size={14} />}
-          {isLive ? 'Live DB' : 'Mock Data'}
-        </button>
-
         {/* Region indicator */}
         <div
           className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
