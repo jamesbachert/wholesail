@@ -2,6 +2,7 @@
 
 import { use, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   Phone,
@@ -22,6 +23,7 @@ import {
   MessageCircle,
   FileText,
   Loader2,
+  Zap,
 } from 'lucide-react';
 import { useDataMode } from '@/components/shared/DataModeProvider';
 import { useApi, apiPost } from '@/lib/hooks';
@@ -35,17 +37,32 @@ import {
   formatDateTime,
   timeAgo,
 } from '@/lib/mockData';
+import { SignalsTab } from '@/components/leads/SignalsTab';
+import { CallDialog } from '@/components/leads/CallDialog';
 
 export default function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
   const { isLive } = useDataMode();
   const { data: liveLead, loading, refetch } = useApi<any>(
     isLive ? `/api/leads/${id}` : null
   );
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'notes'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'signals' | 'timeline' | 'notes'>('overview');
+  const [prevTab, setPrevTab] = useState<string>('overview');
   const [newNote, setNewNote] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  const [showCallDialog, setShowCallDialog] = useState(false);
+  const [liveSignalCount, setLiveSignalCount] = useState<number | null>(null);
+
+  // Refetch when navigating AWAY from signals tab (not on every click)
+  const handleTabChange = (tab: typeof activeTab) => {
+    if (activeTab === 'signals' && tab !== 'signals') {
+      refetch();
+    }
+    setPrevTab(activeTab);
+    setActiveTab(tab);
+  };
 
   // Get lead from appropriate source
   const mockLead = mockLeads.find((l) => l.id === id);
@@ -70,13 +87,15 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     );
   }
 
-  // Normalize data shape — DB lead has nested property, mock data has it too but slightly different
+  // Normalize data shape
   const property = lead.property || lead;
   const signals = lead.signals || [];
   const contactHistory = lead.contacts || lead.contactHistory || [];
   const notes = lead.notes || [];
-  const automatedSignals = signals.filter((s: any) => s.category === 'automated');
-  const manualSignals = signals.filter((s: any) => s.category === 'manual');
+
+  // Signal summary for overview tab
+  const activeSignals = signals.filter((s: any) => s.isActive !== false);
+  const distressSignals = activeSignals.filter((s: any) => s.category === 'distress');
 
   const handleAddNote = async () => {
     if (!newNote.trim() || !isLive) return;
@@ -128,7 +147,9 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap ml-0 md:ml-11">
-          <button className="ws-btn-primary text-xs"><Phone size={14} /> Call</button>
+          <button onClick={() => setShowCallDialog(true)} className="ws-btn-primary text-xs">
+            <Phone size={14} /> Call
+          </button>
           <button className="ws-btn-secondary text-xs"><MessageSquare size={14} /> Text</button>
           <button className="ws-btn-secondary text-xs"><Mail size={14} /> Email</button>
           <button className="ws-btn-secondary text-xs"><Send size={14} /> Hand Off</button>
@@ -152,24 +173,30 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      {/* Tab Navigation */}
+      {/* Tab Navigation — Overview | Signals | Timeline | Notes */}
       <div className="flex items-center gap-1 border-b ml-0 md:ml-11" style={{ borderColor: 'var(--border-primary)' }}>
-        {(['overview', 'timeline', 'notes'] as const).map((tab) => (
+        {(['overview', 'signals', 'timeline', 'notes'] as const).map((tab) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab)}
-            className="px-4 py-2.5 text-sm font-medium transition-all duration-200 border-b-2 -mb-px capitalize"
+            onClick={() => handleTabChange(tab)}
+            className="px-4 py-2.5 text-sm font-medium transition-all duration-200 border-b-2 -mb-px capitalize flex items-center gap-1.5"
             style={{
               borderColor: activeTab === tab ? 'var(--brand-deep)' : 'transparent',
               color: activeTab === tab ? 'var(--brand-deep)' : 'var(--text-secondary)',
             }}
           >
+            {tab === 'signals' && <Zap size={14} />}
             {tab}
+            {tab === 'signals' && (liveSignalCount ?? activeSignals.length) > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold text-white" style={{ backgroundColor: 'var(--brand-deep)' }}>
+                {liveSignalCount ?? activeSignals.length}
+              </span>
+            )}
             {tab === 'timeline' && contactHistory.length > 0 && (
-              <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-tertiary)' }}>{contactHistory.length}</span>
+              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-tertiary)' }}>{contactHistory.length}</span>
             )}
             {tab === 'notes' && notes.length > 0 && (
-              <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-tertiary)' }}>{notes.length}</span>
+              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-tertiary)' }}>{notes.length}</span>
             )}
           </button>
         ))}
@@ -178,7 +205,23 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
       {/* Tab Content */}
       <div className="ml-0 md:ml-11">
         {activeTab === 'overview' && (
-          <OverviewTab property={property} lead={lead} automatedSignals={automatedSignals} manualSignals={manualSignals} />
+          <OverviewTab
+            property={property}
+            lead={lead}
+            signals={activeSignals}
+            distressSignals={distressSignals}
+            onViewSignals={() => handleTabChange('signals')}
+          />
+        )}
+        {activeTab === 'signals' && (
+          <SignalsTab
+            leadId={lead.id}
+            signals={signals}
+            totalScore={lead.totalScore}
+            priority={lead.priority || 'normal'}
+            onUpdate={() => {}} // Sync happens when leaving the signals tab
+            onCountChange={setLiveSignalCount}
+          />
         )}
         {activeTab === 'timeline' && (
           <TimelineTab contactHistory={contactHistory} />
@@ -194,6 +237,18 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
           />
         )}
       </div>
+
+      {/* Call Dialog */}
+      {showCallDialog && (
+        <CallDialog
+          leadId={lead.id}
+          ownerName={property.ownerName || ''}
+          address={property.address}
+          phoneNumber={property.ownerPhone || null}
+          onClose={() => setShowCallDialog(false)}
+          onCallLogged={() => refetch()}
+        />
+      )}
     </div>
   );
 }
@@ -202,10 +257,48 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 // OVERVIEW TAB
 // ============================================================
 
-function OverviewTab({ property, lead, automatedSignals, manualSignals }: any) {
+function OverviewTab({ property, lead, signals, distressSignals, onViewSignals }: any) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
       <div className="lg:col-span-2 space-y-4">
+        {/* Distress Signals Summary */}
+        {signals.length > 0 && (
+          <div className="ws-card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                <Zap size={16} style={{ color: 'var(--brand-deep)' }} />
+                Distress Signals
+                <span className="text-xs font-normal" style={{ color: 'var(--text-tertiary)' }}>
+                  ({signals.length} active)
+                </span>
+              </h3>
+              <button
+                onClick={onViewSignals}
+                className="text-xs font-medium"
+                style={{ color: 'var(--brand-ocean)' }}
+              >
+                View Details →
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {signals.map((s: any, i: number) => (
+                <button
+                  key={s.id || i}
+                  onClick={onViewSignals}
+                  className={`ws-tag ws-tag-${getSignalTagColor(s.signalType)} text-xs cursor-pointer hover:opacity-80 transition-opacity`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            {distressSignals.length >= 2 && (
+              <p className="text-xs mt-2" style={{ color: 'var(--warning)' }}>
+                🔥 Stacking bonus active: +{distressSignals.length >= 3 ? 20 : 10} pts ({distressSignals.length} distress signals)
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Property Details */}
         <div className="ws-card p-5">
           <h3 className="text-sm font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
@@ -224,7 +317,7 @@ function OverviewTab({ property, lead, automatedSignals, manualSignals }: any) {
           </div>
         </div>
 
-        {/* Financial (only if we have data) */}
+        {/* Financial */}
         {(property.assessedValue || property.estimatedValue) && (
           <div className="ws-card p-5">
             <h3 className="text-sm font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
@@ -276,7 +369,7 @@ function OverviewTab({ property, lead, automatedSignals, manualSignals }: any) {
         </div>
       </div>
 
-      {/* Right Column - Score Breakdown */}
+      {/* Right Column - Score + Key Dates */}
       <div className="space-y-4">
         <div className="ws-card p-5">
           <h3 className="text-sm font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
@@ -288,7 +381,7 @@ function OverviewTab({ property, lead, automatedSignals, manualSignals }: any) {
               {lead.totalScore}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 mb-5">
+          <div className="grid grid-cols-2 gap-3 mb-3">
             <div className="text-center p-2.5 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
               <p className="text-[10px] font-semibold uppercase" style={{ color: 'var(--text-tertiary)' }}>Automated</p>
               <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{lead.automatedScore || 0}</p>
@@ -299,26 +392,22 @@ function OverviewTab({ property, lead, automatedSignals, manualSignals }: any) {
             </div>
           </div>
 
-          {automatedSignals.length > 0 && (
-            <div className="mb-4">
-              <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Automated Signals</p>
-              <div className="space-y-2">
-                {automatedSignals.map((s: any, i: number) => <SignalRow key={s.id || i} signal={s} />)}
-              </div>
-            </div>
-          )}
+          {/* Priority tier */}
+          <div className="text-center p-2 rounded-lg mb-3" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+            <p className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+              {lead.totalScore >= 100 ? '🔥 Priority — call same day' :
+               lead.totalScore >= 70 ? '🟠 Hot — reach out within 24 hrs' :
+               lead.totalScore >= 40 ? '🟡 Warm — SMS nurture sequence' :
+               '🔵 Cold — monitor only'}
+            </p>
+          </div>
 
-          {manualSignals.length > 0 && (
-            <div className="mb-4">
-              <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Manual Signals</p>
-              <div className="space-y-2">
-                {manualSignals.map((s: any, i: number) => <SignalRow key={s.id || i} signal={s} />)}
-              </div>
-            </div>
-          )}
-
-          <button className="w-full mt-2 ws-btn-ghost text-xs justify-center border border-dashed" style={{ borderColor: 'var(--border-primary)' }}>
-            <Plus size={14} /> Add Manual Signal
+          <button
+            onClick={onViewSignals}
+            className="w-full ws-btn-ghost text-xs justify-center border border-dashed"
+            style={{ borderColor: 'var(--border-primary)' }}
+          >
+            <Zap size={14} /> View All Signals
           </button>
         </div>
 
@@ -328,8 +417,14 @@ function OverviewTab({ property, lead, automatedSignals, manualSignals }: any) {
             <Calendar size={16} style={{ color: 'var(--brand-deep)' }} /> Key Dates
           </h3>
           <div className="space-y-2.5">
-            {(lead.firstDiscovered || lead.createdAt) && (
-              <DateRow label="Discovered" value={formatDate(lead.firstDiscovered || lead.createdAt)} />
+            {lead.createdAt && (
+              <DateRow label="Created" value={formatDate(lead.createdAt)} />
+            )}
+            {lead.lastActivityAt && (
+              <DateRow label="Last Activity" value={formatDate(lead.lastActivityAt)} />
+            )}
+            {lead.lastSignalAt && (
+              <DateRow label="Last Signal" value={formatDate(lead.lastSignalAt)} />
             )}
             {lead.lastContacted && <DateRow label="Last Contacted" value={formatDate(lead.lastContacted)} />}
             {lead.nextFollowUp && <DateRow label="Next Follow-Up" value={formatDate(lead.nextFollowUp)} highlight />}
@@ -489,18 +584,6 @@ function DetailItem({ label, value, highlight }: { label: string; value: string;
     <div>
       <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
       <p className="text-sm font-medium" style={{ color: highlight ? 'var(--brand-deep)' : 'var(--text-primary)' }}>{value}</p>
-    </div>
-  );
-}
-
-function SignalRow({ signal }: { signal: any }) {
-  return (
-    <div className="flex items-center justify-between p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
-      <div className="flex items-center gap-2 min-w-0">
-        <span className={`ws-tag ws-tag-${getSignalTagColor(signal.signalType)} text-[10px]`}>{signal.label}</span>
-        {signal.value && <span className="text-[10px] truncate" style={{ color: 'var(--text-tertiary)' }}>{signal.value}</span>}
-      </div>
-      <span className="text-xs font-bold shrink-0 ml-2" style={{ color: 'var(--brand-deep)' }}>+{signal.points}</span>
     </div>
   );
 }

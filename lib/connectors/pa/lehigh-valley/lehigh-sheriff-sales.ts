@@ -1,4 +1,4 @@
-import { DataSourceConnector, ParsedRecord } from './types';
+import { DataSourceConnector, ParsedRecord } from '../../types';
 
 // ============================================================
 // LEHIGH COUNTY SHERIFF SALES CONNECTOR

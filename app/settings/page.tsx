@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  FileText,
 } from 'lucide-react';
 import { defaultScoringWeights } from '@/lib/mockData';
 import { useApi } from '@/lib/hooks';
@@ -92,26 +93,39 @@ function SourceSettings() {
   );
   const [runningSlug, setRunningSlug] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<any>(null);
+  const [pasteModalSlug, setPasteModalSlug] = useState<string | null>(null);
+  const [pasteData, setPasteData] = useState('');
 
   const connectors = connectorData?.connectors || [];
 
-  const runConnector = async (slug: string) => {
+  // Check if a connector requires manual input
+  const isManualConnector = (slug: string) =>
+    slug === 'northampton-sheriff-sales';
+
+  const runConnector = async (slug: string, manualData?: string) => {
     setRunningSlug(slug);
     setLastResult(null);
+    setPasteModalSlug(null);
     try {
+      const bodyPayload: any = {};
+      if (manualData) bodyPayload.data = manualData;
+
       const res = await fetch(`/api/connectors/run/${slug}`, {
         method: 'POST',
         headers: {
           'x-connector-secret': 'wholesail-run-2026',
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify(bodyPayload),
       });
       const data = await res.json();
       setLastResult(data);
-      refetch(); // Refresh status
+      refetch();
     } catch (err: any) {
       setLastResult({ success: false, error: err.message });
     } finally {
       setRunningSlug(null);
+      setPasteData('');
     }
   };
 
@@ -238,7 +252,13 @@ function SourceSettings() {
                       <span className="ws-tag ws-tag-neutral text-[10px]">Ready</span>
                     )}
                     <button
-                      onClick={() => runConnector(source.slug)}
+                      onClick={() => {
+                        if (isManualConnector(source.slug)) {
+                          setPasteModalSlug(source.slug);
+                        } else {
+                          runConnector(source.slug);
+                        }
+                      }}
                       disabled={runningSlug === source.slug}
                       className="ws-btn-primary text-xs"
                       style={{
@@ -248,6 +268,10 @@ function SourceSettings() {
                       {runningSlug === source.slug ? (
                         <>
                           <Loader2 size={14} className="animate-spin" /> Running...
+                        </>
+                      ) : isManualConnector(source.slug) ? (
+                        <>
+                          <FileText size={14} /> Paste Data
                         </>
                       ) : (
                         <>
@@ -268,6 +292,55 @@ function SourceSettings() {
           </div>
         )}
       </div>
+
+      {/* Paste Data Modal */}
+      {pasteModalSlug && (
+        <div className="ws-card p-5" style={{ border: '2px solid var(--brand-deep)' }}>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+              Paste Sale List Data
+            </h4>
+            <button
+              onClick={() => { setPasteModalSlug(null); setPasteData(''); }}
+              className="ws-btn-ghost text-xs"
+            >
+              Cancel
+            </button>
+          </div>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+            Go to{' '}
+            <a
+              href="https://web.northamptoncounty.org/SheriffSale/SheriffSale.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline"
+              style={{ color: 'var(--brand-ocean)' }}
+            >
+              Northampton County Sheriff Sale
+            </a>
+            , select all the listing text (Ctrl+A), copy it, and paste below.
+          </p>
+          <textarea
+            value={pasteData}
+            onChange={(e) => setPasteData(e.target.value)}
+            placeholder="Paste the sale list text here...&#10;&#10;Example format:&#10;2026-001  123 Main St  Easton PA 18042  John Doe  Bank of America  3/6/2026"
+            rows={8}
+            className="ws-input resize-none font-mono text-xs"
+          />
+          <div className="flex items-center justify-between mt-3">
+            <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+              {pasteData.split('\n').filter(Boolean).length} lines detected
+            </span>
+            <button
+              onClick={() => runConnector(pasteModalSlug, pasteData)}
+              disabled={!pasteData.trim()}
+              className="ws-btn-primary text-xs"
+            >
+              <Play size={14} /> Import {pasteData.split('\n').filter(Boolean).length} Lines
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Cron setup info */}
       <div className="ws-card p-5">

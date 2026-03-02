@@ -34,7 +34,7 @@ model ZipCodeAnalysis {
   region          Region   @relation(fields: [regionId], references: [id])
   totalProperties Int      @default(0)
   avgPropertyValue Float?
-  saturationScore  Float   @default(0) // 0-100, how many other wholesalers are active
+  saturationScore  Float   @default(0)
   competitorCount  Int     @default(0)
   leadDensity      Float   @default(0)
   lastAnalyzed     DateTime @default(now())
@@ -55,21 +55,18 @@ model Property {
   state           String
   zipCode         String
   county          String?
-  
-  // Property details
-  propertyType    String?  // "Single Family", "Multi Family", "Townhouse", etc.
+
+  propertyType    String?
   bedrooms        Int?
   bathrooms       Float?
   sqft            Int?
-  lotSize         Float?   // acres
+  lotSize         Float?
   yearBuilt       Int?
-  
-  // Financial
+
   assessedValue   Float?
-  estimatedValue  Float?   // ARV estimate
+  estimatedValue  Float?
   estimatedEquity Float?
-  
-  // Ownership
+
   ownerName       String?
   ownerMailingAddress String?
   ownerCity       String?
@@ -79,15 +76,14 @@ model Property {
   ownerPhone2     String?
   ownerEmail      String?
   isAbsenteeOwner Boolean  @default(false)
-  ownershipLength Int?     // months
-  
-  // Status
+  ownershipLength Int?
+
   isVacant        Boolean  @default(false)
   hasCodeViolations Boolean @default(false)
-  
+
   latitude        Float?
   longitude       Float?
-  
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -99,7 +95,7 @@ model Property {
 }
 
 // ============================================================
-// LEADS (the scored, actionable records)
+// LEADS
 // ============================================================
 
 enum LeadStatus {
@@ -120,31 +116,33 @@ model Lead {
   property        Property   @relation(fields: [propertyId], references: [id])
   regionId        String
   region          Region     @relation(fields: [regionId], references: [id])
-  
+
   // Scoring
-  automatedScore  Float      @default(0) // 0-100 from automated signals
-  manualScore     Float      @default(0) // 0-100 from manual enrichment
-  totalScore      Float      @default(0) // Combined weighted score
-  
+  automatedScore  Float      @default(0)
+  manualScore     Float      @default(0)
+  totalScore      Float      @default(0)
+
   // Status tracking
   status          LeadStatus @default(NEW)
-  priority        String     @default("normal") // "urgent", "high", "normal", "low"
+  priority        String     @default("normal")
   isTimeSensitive Boolean    @default(false)
   timeSensitiveReason String?
   timeSensitiveDeadline DateTime?
-  
+
   // Assignment
   assignedTo      String?
-  
-  // Dates
+
+  // Key Dates
+  lastActivityAt  DateTime   @default(now())
+  lastSignalAt    DateTime?
+  archivedAt      DateTime?
   firstDiscovered DateTime   @default(now())
   lastContacted   DateTime?
   nextFollowUp    DateTime?
-  
+
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  // Relations
   signals         LeadSignal[]
   contacts        ContactLog[]
   notes           LeadNote[]
@@ -154,6 +152,8 @@ model Lead {
   @@index([status])
   @@index([regionId])
   @@index([isTimeSensitive])
+  @@index([lastActivityAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
 }
 
 // ============================================================
@@ -162,10 +162,10 @@ model Lead {
 
 model ScoringWeight {
   id          String   @id @default(cuid())
-  signalType  String   @unique // "pre_foreclosure", "probate", "divorce", etc.
-  label       String   // "Pre-Foreclosure"
-  category    String   // "automated" or "manual"
-  weight      Float    // 0-100 point value
+  signalType  String   @unique
+  label       String
+  category    String   // "distress", "ownership", "timing", "financial", "condition"
+  weight      Float
   description String?
   isActive    Boolean  @default(true)
   sortOrder   Int      @default(0)
@@ -174,24 +174,31 @@ model ScoringWeight {
 }
 
 model LeadSignal {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   leadId      String
-  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  signalType  String   // matches ScoringWeight.signalType
+  lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  signalType  String
   label       String
-  category    String   // "automated" or "manual"
-  value       String?  // Additional context, e.g. "Filed 2024-01-15"
-  points      Float    // Points contributed to score
-  source      String?  // Which data source found this
+  category    String
+  value       String?
+  points      Float
+  source      String?
   discoveredAt DateTime @default(now())
-  
-  createdAt   DateTime @default(now())
+
+  isAutomated Boolean   @default(false)
+  isLocked    Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  eventDate   DateTime?
+  metadata    Json?
+
+  createdAt   DateTime  @default(now())
 
   @@index([leadId])
+  @@index([signalType])
 }
 
 // ============================================================
-// DATA SOURCES (connector registry)
+// DATA SOURCES
 // ============================================================
 
 enum SourceStatus {
@@ -203,19 +210,19 @@ enum SourceStatus {
 
 model DataSource {
   id            String       @id @default(cuid())
-  name          String       // "Lehigh County Tax Sales"
+  name          String
   slug          String       @unique
-  type          String       // "court_filing", "tax_sale", "code_violation", etc.
+  type          String
   regionId      String
   region        Region       @relation(fields: [regionId], references: [id])
-  url           String?      // Source URL
+  url           String?
   status        SourceStatus @default(PENDING)
   lastRun       DateTime?
   lastSuccess   DateTime?
   recordsFound  Int          @default(0)
   errorMessage  String?
-  config        Json?        // Connector-specific configuration
-  schedule      String?      // Cron expression for auto-runs
+  config        Json?
+  schedule      String?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
@@ -228,7 +235,7 @@ model SourceRecord {
   dataSource   DataSource @relation(fields: [dataSourceId], references: [id])
   propertyId   String?
   property     Property?  @relation(fields: [propertyId], references: [id])
-  rawData      Json       // Original scraped data
+  rawData      Json
   processedAt  DateTime?
   createdAt    DateTime   @default(now())
 
@@ -271,9 +278,10 @@ model ContactLog {
   lead        Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
   type        ContactType
   outcome     ContactOutcome?
-  duration    Int?           // seconds for calls
-  message     String?        // SMS/email content
+  duration    Int?
+  message     String?
   notes       String?
+  scriptUsed  String?
   createdAt   DateTime       @default(now())
 
   @@index([leadId])
@@ -290,6 +298,23 @@ model LeadNote {
   updatedAt DateTime @updatedAt
 
   @@index([leadId])
+}
+
+// ============================================================
+// CALL SCRIPTS
+// ============================================================
+
+model CallScript {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  body        String
+  description String?
+  isDefault   Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // ============================================================
@@ -311,7 +336,7 @@ model WholesalePartner {
   company     String?
   email       String
   phone       String?
-  regions     String[]  // Region slugs they cover
+  regions     String[]
   isActive    Boolean   @default(true)
   totalDeals  Int       @default(0)
   createdAt   DateTime  @default(now())
@@ -327,8 +352,8 @@ model Handoff {
   partnerId   String
   partner     WholesalePartner @relation(fields: [partnerId], references: [id])
   status      HandoffStatus @default(PENDING)
-  summary     String?       // Generated lead summary
-  whyHot      String?       // Key motivation signals
+  summary     String?
+  whyHot      String?
   notes       String?
   sentAt      DateTime?
   respondedAt DateTime?

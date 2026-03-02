@@ -9,10 +9,7 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  Compass,
-  Bell,
   Handshake,
-  Database,
 } from 'lucide-react';
 import { useSidebar } from './SidebarContext';
 import { clsx } from 'clsx';
@@ -22,12 +19,6 @@ const navItems = [
   { href: '/leads', label: 'Leads', icon: Users },
   { href: '/handoff', label: 'Hand-Off', icon: Handshake },
   { href: '/settings', label: 'Settings', icon: Settings },
-];
-
-const secondaryItems = [
-  { href: '/settings#sources', label: 'Data Sources', icon: Database },
-  { href: '/settings#regions', label: 'Regions', icon: Compass },
-  { href: '/settings#notifications', label: 'Notifications', icon: Bell },
 ];
 
 export function Sidebar() {
@@ -55,7 +46,6 @@ export function Sidebar() {
       >
         {isExpanded ? (
           <div className="flex items-center gap-2.5">
-            {/* Placeholder logo icon */}
             <div
               className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
               style={{ background: 'linear-gradient(135deg, var(--brand-deep), var(--brand-cyan))' }}
@@ -119,45 +109,6 @@ export function Sidebar() {
                 <span className="text-sm font-medium sidebar-text-transition">
                   {item.label}
                 </span>
-              )}
-            </Link>
-          );
-        })}
-
-        {/* Divider */}
-        <div
-          className="my-4 border-t"
-          style={{ borderColor: 'var(--border-subtle)' }}
-        />
-
-        {isExpanded && (
-          <div className="px-2 mb-3">
-            <span
-              className="text-[10px] font-semibold uppercase tracking-widest"
-              style={{ color: 'var(--text-tertiary)' }}
-            >
-              Configure
-            </span>
-          </div>
-        )}
-
-        {secondaryItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={clsx(
-                'flex items-center gap-3 rounded-lg transition-all duration-200',
-                isExpanded ? 'px-3 py-2' : 'px-0 py-2 justify-center',
-                'hover:bg-[var(--bg-elevated)]'
-              )}
-              style={{ color: 'var(--text-secondary)' }}
-              title={!isExpanded ? item.label : undefined}
-            >
-              <Icon size={18} className="shrink-0" />
-              {isExpanded && (
-                <span className="text-sm sidebar-text-transition">{item.label}</span>
               )}
             </Link>
           );

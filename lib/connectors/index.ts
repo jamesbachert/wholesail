@@ -1,47 +1,44 @@
 import { DataSourceConnector } from './types';
-import { LehighSheriffSalesConnector } from './lehigh-sheriff-sales';
+import { LehighSheriffSalesConnector } from './pa/lehigh-valley/lehigh-sheriff-sales';
+import { LehighRepositoryConnector } from './pa/lehigh-valley/lehigh-tax-repository';
+import { NorthamptonSheriffSalesConnector } from './pa/lehigh-valley/northampton-sheriff-sales';
 
 // ============================================================
 // CONNECTOR REGISTRY
-// Register all data source connectors here.
-// To add a new connector:
-// 1. Create a new file in lib/connectors/
-// 2. Implement the DataSourceConnector interface
-// 3. Add it to the registry below
+// Organized by: state / region / connector
+// Global connectors (future) go in ./global/
 // ============================================================
 
-const connectors: Record<string, () => DataSourceConnector> = {
-  'lehigh-sheriff-sales': () => new LehighSheriffSalesConnector(),
-  // Future connectors:
-  // 'northampton-sheriff-sales': () => new NorthamptonSheriffSalesConnector(),
-  // 'lehigh-tax-delinquent': () => new LehighTaxDelinquentConnector(),
-  // 'lehigh-code-violations': () => new LehighCodeViolationsConnector(),
-};
+const connectors: DataSourceConnector[] = [
+  // Pennsylvania — Lehigh Valley
+  new LehighSheriffSalesConnector(),
+  new LehighRepositoryConnector(),
 
-export function getConnector(slug: string): DataSourceConnector | null {
-  const factory = connectors[slug];
-  return factory ? factory() : null;
+  // Pennsylvania — Northampton County
+  new NorthamptonSheriffSalesConnector(),
+];
+
+const connectorMap = new Map<string, DataSourceConnector>(
+  connectors.map((c) => [c.slug, c])
+);
+
+export function getConnector(slug: string): DataSourceConnector | undefined {
+  return connectorMap.get(slug);
 }
 
 export function getAllConnectorSlugs(): string[] {
-  return Object.keys(connectors);
+  return connectors.map((c) => c.slug);
 }
 
-export function getConnectorInfo(): Array<{
-  slug: string;
-  name: string;
-  type: string;
-  description: string;
-  regionSlug: string;
-}> {
-  return Object.entries(connectors).map(([slug, factory]) => {
-    const c = factory();
-    return {
-      slug: c.slug,
-      name: c.name,
-      type: c.type,
-      description: c.description,
-      regionSlug: c.regionSlug,
-    };
-  });
+export function getConnectorInfo() {
+  return connectors.map((c) => ({
+    name: c.name,
+    slug: c.slug,
+    type: c.type,
+    regionSlug: c.regionSlug,
+    description: c.description,
+    // Group by region for the UI
+    state: c.regionSlug === 'lehigh-valley' ? 'PA' : 'PA',
+    region: c.regionSlug,
+  }));
 }

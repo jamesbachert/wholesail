@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Search,
@@ -20,8 +20,10 @@ import {
   formatCurrency,
   timeAgo,
 } from '@/lib/mockData';
+import { AdvancedFilters, emptyFilters } from '@/components/leads/AdvancedFilters';
+import type { Filters, FilterOptions } from '@/components/leads/AdvancedFilters';
 
-type SortField = 'totalScore' | 'firstDiscovered' | 'lastContacted' | 'estimatedValue';
+type SortField = 'totalScore' | 'createdAt' | 'lastActivityAt' | 'lastContacted' | 'estimatedValue';
 type SortDir = 'asc' | 'desc';
 
 const statusFilters = ['ALL', 'NEW', 'CONTACTED', 'WARM', 'HOT', 'UNDER_CONTRACT', 'HANDED_OFF', 'CLOSED', 'DEAD'];
@@ -33,13 +35,47 @@ export default function LeadsPage() {
   const [sortField, setSortField] = useState<SortField>('totalScore');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
+  const [advancedFilters, setAdvancedFilters] = useState<Filters>(emptyFilters);
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>({ cities: [], zipCodes: [] });
 
-  // Build API URL for live mode
-  const apiUrl = isLive
-    ? `/api/leads?sortBy=${sortField}&sortDir=${sortDir}${statusFilter !== 'ALL' ? `&status=${statusFilter}` : ''}${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ''}`
-    : null;
+  // Build API URL with all filters for live mode
+  const apiUrl = useMemo(() => {
+    if (!isLive) return null;
+
+    const params = new URLSearchParams();
+    params.set('sortBy', sortField);
+    params.set('sortDir', sortDir);
+
+    if (statusFilter !== 'ALL') params.set('status', statusFilter);
+    if (searchQuery) params.set('search', searchQuery);
+
+    // Advanced filters
+    if (advancedFilters.createdFrom) params.set('createdFrom', advancedFilters.createdFrom);
+    if (advancedFilters.createdTo) params.set('createdTo', advancedFilters.createdTo);
+    if (advancedFilters.activityFrom) params.set('activityFrom', advancedFilters.activityFrom);
+    if (advancedFilters.activityTo) params.set('activityTo', advancedFilters.activityTo);
+    if (advancedFilters.signals.length > 0) params.set('signals', advancedFilters.signals.join(','));
+    if (advancedFilters.cities.length > 0) params.set('cities', advancedFilters.cities.join(','));
+    if (advancedFilters.zipCodes.length > 0) params.set('zipCodes', advancedFilters.zipCodes.join(','));
+    if (advancedFilters.minScore) params.set('minScore', advancedFilters.minScore);
+    if (advancedFilters.maxScore) params.set('maxScore', advancedFilters.maxScore);
+    if (advancedFilters.minArv) params.set('minArv', advancedFilters.minArv);
+    if (advancedFilters.maxArv) params.set('maxArv', advancedFilters.maxArv);
+    if (advancedFilters.timeSensitive) params.set('timeSensitive', 'true');
+    if (advancedFilters.hasPhone) params.set('hasPhone', 'true');
+    if (advancedFilters.priority) params.set('priority', advancedFilters.priority);
+
+    return `/api/leads?${params.toString()}`;
+  }, [isLive, sortField, sortDir, statusFilter, searchQuery, advancedFilters]);
 
   const { data: liveData, loading } = useApi<any>(apiUrl);
+
+  // Update filter options from API response
+  useEffect(() => {
+    if (liveData?.filterOptions) {
+      setFilterOptions(liveData.filterOptions);
+    }
+  }, [liveData]);
 
   // Get leads from appropriate source
   const allLeads = useMemo(() => {
@@ -73,7 +109,8 @@ export default function LeadsPage() {
       let aVal: number, bVal: number;
       switch (sortField) {
         case 'totalScore': aVal = a.totalScore; bVal = b.totalScore; break;
-        case 'firstDiscovered': aVal = new Date(a.firstDiscovered).getTime(); bVal = new Date(b.firstDiscovered).getTime(); break;
+        case 'createdAt': aVal = new Date(a.firstDiscovered).getTime(); bVal = new Date(b.firstDiscovered).getTime(); break;
+        case 'lastActivityAt': aVal = new Date(a.firstDiscovered).getTime(); bVal = new Date(b.firstDiscovered).getTime(); break;
         case 'lastContacted': aVal = a.lastContacted ? new Date(a.lastContacted).getTime() : 0; bVal = b.lastContacted ? new Date(b.lastContacted).getTime() : 0; break;
         case 'estimatedValue': aVal = a.property.estimatedValue; bVal = b.property.estimatedValue; break;
         default: aVal = a.totalScore; bVal = b.totalScore;
@@ -111,8 +148,12 @@ export default function LeadsPage() {
     }
   };
 
-  // Normalize lead for rendering (handles both mock and DB shapes)
   const getProp = (lead: any) => lead.property || lead;
+
+  const sortLabel = sortField === 'totalScore' ? 'score' :
+    sortField === 'createdAt' ? 'created date' :
+    sortField === 'lastActivityAt' ? 'last activity' :
+    sortField === 'lastContacted' ? 'last contacted' : 'value';
 
   return (
     <div className="max-w-7xl mx-auto space-y-4 pb-20 md:pb-6">
@@ -123,7 +164,7 @@ export default function LeadsPage() {
             Leads
           </h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-            {loading ? 'Loading...' : `${totalCount} leads`} · sorted by {sortField === 'totalScore' ? 'score' : sortField}
+            {loading ? 'Loading...' : `${totalCount} leads`} · sorted by {sortLabel}
           </p>
         </div>
         {selectedLeads.size > 0 && (
@@ -135,7 +176,7 @@ export default function LeadsPage() {
         )}
       </div>
 
-      {/* Filters Bar */}
+      {/* Search + Status Filters */}
       <div className="ws-card p-3">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <div
@@ -171,6 +212,13 @@ export default function LeadsPage() {
         </div>
       </div>
 
+      {/* Advanced Filters */}
+      <AdvancedFilters
+        filters={advancedFilters}
+        onChange={setAdvancedFilters}
+        filterOptions={filterOptions}
+      />
+
       {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center py-8 gap-2" style={{ color: 'var(--text-secondary)' }}>
@@ -198,8 +246,8 @@ export default function LeadsPage() {
               Value <ArrowUpDown size={12} />
             </button>
             <div>Status</div>
-            <button onClick={() => toggleSort('firstDiscovered')} className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors">
-              Discovered <ArrowUpDown size={12} />
+            <button onClick={() => toggleSort('createdAt')} className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors">
+              Created <ArrowUpDown size={12} />
             </button>
           </div>
 
@@ -208,7 +256,7 @@ export default function LeadsPage() {
             {allLeads.map((lead: any) => {
               const prop = getProp(lead);
               const signals = lead.signals || [];
-              const discovered = lead.firstDiscovered || lead.createdAt;
+              const created = lead.createdAt || lead.firstDiscovered;
 
               return (
                 <div key={lead.id} className="ws-table-row">
@@ -247,7 +295,7 @@ export default function LeadsPage() {
                       </span>
                     </div>
                     <div>
-                      <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{discovered ? timeAgo(discovered) : '—'}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{created ? timeAgo(created) : '—'}</p>
                     </div>
                   </div>
 
@@ -271,7 +319,7 @@ export default function LeadsPage() {
                       </div>
                     </div>
                     <span className="text-[10px] shrink-0" style={{ color: 'var(--text-tertiary)' }}>
-                      {discovered ? timeAgo(discovered) : ''}
+                      {created ? timeAgo(created) : ''}
                     </span>
                   </Link>
                 </div>
@@ -282,7 +330,7 @@ export default function LeadsPage() {
           {allLeads.length === 0 && !loading && (
             <div className="px-5 py-12 text-center">
               <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {isLive ? 'No leads in database yet. Switch to Mock Data mode to see the demo, or start importing leads.' : 'No leads match your filters'}
+                {isLive ? 'No leads match your filters. Try adjusting your search or filters.' : 'No leads match your filters'}
               </p>
             </div>
           )}

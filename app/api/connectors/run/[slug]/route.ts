@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnector } from '@/lib/connectors';
 import { importRecords } from '@/lib/connectors/import-engine';
+import { NorthamptonSheriffSalesConnector } from '@/lib/connectors/northampton-sheriff-sales';
 
 // Secret key to prevent unauthorized triggers
-// In production, set CONNECTOR_SECRET in your env vars
 const CONNECTOR_SECRET = process.env.CONNECTOR_SECRET || 'wholesail-run-2026';
 
 export async function POST(
@@ -13,7 +13,7 @@ export async function POST(
   try {
     const { slug } = await params;
 
-    // Check authorization (either secret header or logged-in user)
+    // Check authorization
     const authHeader = request.headers.get('x-connector-secret');
     const { searchParams } = new URL(request.url);
     const querySecret = searchParams.get('secret');
@@ -33,8 +33,25 @@ export async function POST(
 
     console.log(`[Connector] Running: ${connector.name}`);
 
-    // Fetch and parse
-    const records = await connector.fetchAndParse();
+    let records;
+
+    // Check if manual data was provided in the body
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      // No JSON body — that's fine for auto-fetch connectors
+    }
+
+    if (body.data && connector instanceof NorthamptonSheriffSalesConnector) {
+      // Manual import mode for Northampton
+      console.log(`[Connector] Manual import mode for ${connector.name}`);
+      records = connector.parseManualInput(body.data);
+    } else {
+      // Auto-fetch mode
+      records = await connector.fetchAndParse();
+    }
+
     console.log(`[Connector] Parsed ${records.length} records from ${connector.name}`);
 
     // Import into database
@@ -59,11 +76,10 @@ export async function POST(
   }
 }
 
-// GET endpoint for cron services that use GET requests
+// GET endpoint for cron services
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
-  // Reuse POST logic
   return POST(request, { params });
 }
