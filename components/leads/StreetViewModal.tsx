@@ -224,7 +224,7 @@ function StreetViewModal({
                 <ExternalLink size={14} /> View on Google Maps
               </a>
             </div>
-          ) : (
+          ) : embedUrl ? (
             <iframe
               className="absolute inset-0 w-full h-full"
               src={embedUrl}
@@ -235,7 +235,7 @@ function StreetViewModal({
               onError={() => setHasError(true)}
               style={{ border: 0 }}
             />
-          )}
+          ) : null}
         </div>
       </div>
     </div>
