@@ -239,7 +239,7 @@ export function CallDialog({
                     borderColor: outcome === o.value ? o.color : 'var(--border-primary)',
                     backgroundColor: outcome === o.value ? `${o.color}10` : 'transparent',
                     color: outcome === o.value ? o.color : 'var(--text-primary)',
-                    ringColor: o.color,
+                    outlineColor: o.color,
                   }}
                 >
                   {o.label}

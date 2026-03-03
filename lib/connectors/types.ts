@@ -5,6 +5,14 @@
 // a class implementing DataSourceConnector.
 // ============================================================
 
+/**
+ * ConnectorMode determines how a connector's data flows:
+ * - 'import':    Writes to Property/Lead tables only (classic pipeline import)
+ * - 'discovery': Writes to DiscoveredLead/DiscoverySignal only (staging area)
+ * - 'both':      Writes to both — import pipeline AND discovery staging
+ */
+export type ConnectorMode = 'import' | 'discovery' | 'both';
+
 export interface ConnectorResult {
   success: boolean;
   newLeads: number;
@@ -31,7 +39,7 @@ export interface ParsedRecord {
   signals: Array<{
     signalType: string;
     label: string;
-    category: 'automated' | 'manual';
+    category: string; // 'distress' | 'ownership' | 'financial' | 'condition' | 'automated' | 'manual'
     points: number;
     value?: string;
     source?: string;

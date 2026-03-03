@@ -269,7 +269,7 @@ export async function addContactLog(data: {
   }
 
   // If first contact, move from NEW to CONTACTED
-  if (lead_is_new(data.leadId)) {
+  if (await lead_is_new(data.leadId)) {
     await prisma.lead.update({
       where: { id: data.leadId },
       data: { status: 'CONTACTED' },

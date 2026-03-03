@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Handshake,
+  Compass,
 } from 'lucide-react';
 import { useSidebar } from './SidebarContext';
 import { clsx } from 'clsx';
@@ -17,6 +18,7 @@ import { clsx } from 'clsx';
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/leads', label: 'Leads', icon: Users },
+  { href: '/discovery', label: 'Discovery', icon: Compass },
   { href: '/handoff', label: 'Hand-Off', icon: Handshake },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];

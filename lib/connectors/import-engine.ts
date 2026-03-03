@@ -207,7 +207,7 @@ export async function importRecords(
         newLeads++;
       } else {
         // Brand new property + lead
-        property = await prisma.property.create({
+        const newProperty = await prisma.property.create({
           data: {
             address: record.address,
             city: record.city,
@@ -217,10 +217,11 @@ export async function importRecords(
             ownerName: record.ownerName,
           },
         });
+        property = newProperty as any;
 
         const lead = await prisma.lead.create({
           data: {
-            propertyId: property.id,
+            propertyId: newProperty.id,
             regionId: region.id,
             status: 'NEW',
             isTimeSensitive: !!record.saleDate,
@@ -253,13 +254,13 @@ export async function importRecords(
         }
 
         await recalculateScore(lead.id);
-        await syncPropertyFlags(property.id, record.signals);
+        await syncPropertyFlags(newProperty.id, record.signals);
 
         // Audit trail
         await prisma.sourceRecord.create({
           data: {
             dataSourceId: dataSource.id,
-            propertyId: property.id,
+            propertyId: newProperty.id,
             rawData: record.rawData as any,
             processedAt: now,
           },

@@ -405,3 +405,89 @@ model AppSetting {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// ============================================================
+// LEAD DISCOVERY
+// ============================================================
+
+model DiscoveredLead {
+  id                String   @id @default(cuid())
+  address           String
+  addressNormalized String
+  city              String
+  state             String
+  zipCode           String?
+  latitude          Float?
+  longitude         Float?
+
+  // Generic property fields (populated by any source)
+  propertyType      String?
+  yearBuilt         Int?
+
+  // Discovery metadata
+  discoveryScore    Float     @default(0)
+  sourceCount       Int       @default(1)  // Number of distinct connectors that contributed signals
+  sourceRegion      String    // e.g. "lehigh-valley"
+  status            String    @default("new") // "new" | "reviewed" | "in_pipeline" | "dismissed"
+  externalId        String?   // ObjectID from source system
+  rawData           Json?
+
+  // Relationship to pipeline lead (if promoted)
+  promotedLeadId    String?
+
+  // Timestamps
+  firstSeenAt       DateTime  @default(now())
+  lastSeenAt        DateTime  @default(now())
+  syncedAt          DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  signals           DiscoverySignal[]
+
+  @@unique([addressNormalized, sourceRegion])
+  @@index([sourceRegion])
+  @@index([status])
+  @@index([discoveryScore(sort: Desc)])
+  @@index([sourceCount])
+}
+
+model DiscoverySignal {
+  id               String   @id @default(cuid())
+  discoveredLeadId String
+  discoveredLead   DiscoveredLead @relation(fields: [discoveredLeadId], references: [id], onDelete: Cascade)
+
+  connectorSlug    String    // "ara-blight", "lehigh-sheriff-sales", etc.
+  signalType       String    // "blight_certified", "sheriff_sale", "code_violation"
+  label            String    // Human-readable: "ARA Certified Blight"
+  category         String    // "distress" | "ownership" | "financial" | "condition"
+  points           Int       // Contribution to discovery score
+  value            String?   // Freeform: "Criteria: 1,2,3,9" or "Sale Date: 2024-06-15"
+  details          Json?     // Source-specific structured data
+  sourceUrl        String?   // Link back to original source
+
+  firstSeenAt      DateTime  @default(now())
+  lastSeenAt       DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([discoveredLeadId, connectorSlug, signalType])
+  @@index([connectorSlug])
+  @@index([signalType])
+}
+
+model DataSourceSync {
+  id            String    @id @default(cuid())
+  connectorSlug String    // e.g. "ara-blight"
+  region        String    // e.g. "lehigh-valley"
+  status        String    // "syncing" | "success" | "error"
+  recordCount   Int       @default(0)
+  newCount      Int       @default(0)
+  updatedCount  Int       @default(0)
+  errorMessage  String?
+  startedAt     DateTime  @default(now())
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([connectorSlug, region])
+}
