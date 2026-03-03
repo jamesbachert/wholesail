@@ -41,10 +41,10 @@ export function getScoreColor(score: number): string {
 }
 
 export function getScoreColorHex(score: number): string {
-  if (score >= 80) return '#0A7E8C';
-  if (score >= 60) return '#1B98A8';
-  if (score >= 40) return '#F59E0B';
-  return '#94A3B8';
+  if (score >= 80) return '#DC2626'; // hot — red
+  if (score >= 60) return '#EA580C'; // warm — orange
+  if (score >= 40) return '#F59E0B'; // medium — amber
+  return '#94A3B8'; // cold — gray
 }
 
 export function getStatusLabel(status: string): string {
