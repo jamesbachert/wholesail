@@ -192,6 +192,33 @@ Would it be okay if I followed up with you next week? Or if you'd prefer, I can 
   }
   console.log(`✅ Call scripts: ${scripts.length} scripts seeded`);
 
+  // ============================================================
+  // CONNECTOR REGION ASSIGNMENTS
+  // ============================================================
+  const connectorSlugs = [
+    'lehigh-sheriff-sales',
+    'lehigh-tax-repository',
+    'northampton-sheriff-sales',
+    'allentown-code-violations',
+    'allentown-rental-licenses',
+    'allentown-ara-blight',
+  ];
+
+  for (const slug of connectorSlugs) {
+    await prisma.connectorRegionAssignment.upsert({
+      where: {
+        connectorSlug_regionId: { connectorSlug: slug, regionId: region.id },
+      },
+      update: { isEnabled: true },
+      create: {
+        connectorSlug: slug,
+        regionId: region.id,
+        isEnabled: true,
+      },
+    });
+  }
+  console.log(`✅ Connector region assignments: ${connectorSlugs.length} connectors → ${region.name}`);
+
   console.log('\n🎉 Seed complete!');
 }
 

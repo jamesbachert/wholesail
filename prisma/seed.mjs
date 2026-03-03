@@ -65,6 +65,31 @@ async function main() {
   }
   console.log(`✅ ${scoringWeights.length} scoring weights created`);
 
+  // Connector region assignments
+  const connectorSlugs = [
+    'lehigh-sheriff-sales',
+    'lehigh-tax-repository',
+    'northampton-sheriff-sales',
+    'allentown-code-violations',
+    'allentown-rental-licenses',
+    'allentown-ara-blight',
+  ];
+
+  for (const slug of connectorSlugs) {
+    await prisma.connectorRegionAssignment.upsert({
+      where: {
+        connectorSlug_regionId: { connectorSlug: slug, regionId: region.id },
+      },
+      update: { isEnabled: true },
+      create: {
+        connectorSlug: slug,
+        regionId: region.id,
+        isEnabled: true,
+      },
+    });
+  }
+  console.log(`✅ ${connectorSlugs.length} connector region assignments created`);
+
   console.log('🎉 Seed complete!');
 }
 

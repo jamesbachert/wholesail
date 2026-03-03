@@ -67,8 +67,8 @@ export async function POST(
 
     console.log(`[Connector] Parsed ${records.length} records from ${connector.name}`);
 
-    // Import into database
-    const result = await importRecords(records, slug);
+    // Import into database — pass the connector's region slug
+    const result = await importRecords(records, slug, connector.regionSlug);
     console.log(
       `[Connector] Import complete: ${result.newLeads} new, ${result.updatedLeads} updated, ${result.errors} errors (${result.duration}ms)`
     );

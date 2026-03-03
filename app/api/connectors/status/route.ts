@@ -7,10 +7,25 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const regionSlug = searchParams.get('region') || undefined;
 
-    // Get registered connectors, optionally filtered by region
+    // Get all registered connectors
     let connectors = getConnectorInfo();
+
+    // Filter by region assignments from the database (if region specified)
     if (regionSlug) {
-      connectors = connectors.filter((c) => c.regionSlug === regionSlug);
+      const region = await prisma.region.findUnique({
+        where: { slug: regionSlug },
+      });
+
+      if (region) {
+        // Get enabled connector-region assignments for this region
+        const assignments = await prisma.connectorRegionAssignment.findMany({
+          where: { regionId: region.id, isEnabled: true },
+        });
+        const enabledSlugs = new Set(assignments.map((a) => a.connectorSlug));
+
+        // Filter to only connectors assigned to this region
+        connectors = connectors.filter((c) => enabledSlugs.has(c.slug));
+      }
     }
 
     // Get data source records from DB for status info
@@ -35,6 +50,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    result.sort((a, b) => a.name.localeCompare(b.name));
     return NextResponse.json({ connectors: result });
   } catch (error: any) {
     console.error('Error fetching connector status:', error);

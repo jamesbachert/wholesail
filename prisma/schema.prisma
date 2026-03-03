@@ -23,9 +23,24 @@ model Region {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  leads       Lead[]
-  dataSources DataSource[]
-  zipAnalyses ZipCodeAnalysis[]
+  leads                Lead[]
+  dataSources          DataSource[]
+  zipAnalyses          ZipCodeAnalysis[]
+  connectorAssignments ConnectorRegionAssignment[]
+}
+
+model ConnectorRegionAssignment {
+  id             String   @id @default(cuid())
+  connectorSlug  String
+  regionId       String
+  region         Region   @relation(fields: [regionId], references: [id])
+  isEnabled      Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([connectorSlug, regionId])
+  @@index([connectorSlug])
+  @@index([regionId])
 }
 
 model ZipCodeAnalysis {

@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
 
     for (const lead of toEnrich) {
       try {
-        const result = await connector.lookupByAddress(lead.address, lead.zipCode);
+        const result = await connector.lookupByAddress(lead.address, lead.zipCode || '');
 
         if (!result.found) {
           // No license found — add a "no rental license" signal for leads in supported zips
@@ -88,17 +88,18 @@ export async function POST(request: NextRequest) {
           });
           enrichedCount++;
         } else {
-          // Determine if active or expired
-          const isExpired = result.expirationDate && result.expirationDate < new Date();
+          // Determine if active or expired (cast to any since result type varies by connector)
+          const r = result as any;
+          const isExpired = r.expirationDate && r.expirationDate < new Date();
           const signalType = isExpired ? 'rental_license_expired' : 'rental_license';
           const label = isExpired ? 'Expired Rental License' : 'Active Rental License';
           const points = isExpired ? 12 : 8;
 
           const valueParts = [
-            result.licenseNumber ? `License #${result.licenseNumber}` : null,
-            result.expirationDate ? `Expires ${result.expirationDate.toLocaleDateString()}` : null,
-            result.numberOfUnits ? `${result.numberOfUnits} unit${result.numberOfUnits !== 1 ? 's' : ''}` : null,
-            result.status ? `Status: ${result.status}` : null,
+            r.licenseNumber ? `License #${r.licenseNumber}` : null,
+            r.expirationDate ? `Expires ${r.expirationDate.toLocaleDateString()}` : null,
+            r.numberOfUnits ? `${r.numberOfUnits} unit${r.numberOfUnits !== 1 ? 's' : ''}` : null,
+            r.status ? `Status: ${r.status}` : null,
           ].filter(Boolean);
 
           await prisma.discoverySignal.upsert({
@@ -118,12 +119,12 @@ export async function POST(request: NextRequest) {
               points,
               value: valueParts.join(' · '),
               details: {
-                licenseNumber: result.licenseNumber,
-                expirationDate: result.expirationDate?.toISOString(),
-                issuedDate: result.issuedDate?.toISOString(),
-                status: result.status,
-                numberOfUnits: result.numberOfUnits,
-                parcelNumber: result.parcelNumber,
+                licenseNumber: r.licenseNumber,
+                expirationDate: r.expirationDate?.toISOString(),
+                issuedDate: r.issuedDate?.toISOString(),
+                status: r.status,
+                numberOfUnits: r.numberOfUnits,
+                parcelNumber: r.parcelNumber,
               },
             },
             update: {
@@ -132,12 +133,12 @@ export async function POST(request: NextRequest) {
               points,
               value: valueParts.join(' · '),
               details: {
-                licenseNumber: result.licenseNumber,
-                expirationDate: result.expirationDate?.toISOString(),
-                issuedDate: result.issuedDate?.toISOString(),
-                status: result.status,
-                numberOfUnits: result.numberOfUnits,
-                parcelNumber: result.parcelNumber,
+                licenseNumber: r.licenseNumber,
+                expirationDate: r.expirationDate?.toISOString(),
+                issuedDate: r.issuedDate?.toISOString(),
+                status: r.status,
+                numberOfUnits: r.numberOfUnits,
+                parcelNumber: r.parcelNumber,
               },
               lastSeenAt: new Date(),
             },

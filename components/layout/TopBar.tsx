@@ -1,12 +1,28 @@
 'use client';
 
-import { Sun, Moon, Bell, Search, MapPin } from 'lucide-react';
+import { Sun, Moon, Bell, Search, MapPin, ChevronDown, Check } from 'lucide-react';
 import { useTheme } from '@/components/shared/ThemeProvider';
-import { useState } from 'react';
+import { useRegion } from '@/components/shared/RegionProvider';
+import { useState, useRef, useEffect } from 'react';
 
 export function TopBar() {
   const { theme, toggleTheme } = useTheme();
+  const { activeRegion, regions, setActiveRegion, loading: regionLoading } = useRegion();
   const [searchFocused, setSearchFocused] = useState(false);
+  const [regionOpen, setRegionOpen] = useState(false);
+  const regionRef = useRef<HTMLDivElement>(null);
+
+  // Outside-click dismiss for region dropdown
+  useEffect(() => {
+    if (!regionOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (regionRef.current && !regionRef.current.contains(e.target as Node)) {
+        setRegionOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [regionOpen]);
 
   return (
     <header
@@ -42,16 +58,78 @@ export function TopBar() {
 
       {/* Right side controls */}
       <div className="flex items-center gap-2">
-        {/* Region indicator */}
-        <div
-          className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-          style={{
-            backgroundColor: 'var(--bg-elevated)',
-            color: 'var(--text-secondary)',
-          }}
-        >
-          <MapPin size={14} style={{ color: 'var(--brand-deep)' }} />
-          Lehigh Valley
+        {/* Region dropdown */}
+        <div className="relative hidden md:block" ref={regionRef}>
+          <button
+            onClick={() => setRegionOpen(!regionOpen)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors duration-200 hover:bg-[var(--bg-elevated)]"
+            style={{
+              backgroundColor: regionOpen ? 'var(--bg-elevated)' : 'var(--bg-elevated)',
+              color: 'var(--text-secondary)',
+            }}
+          >
+            <MapPin size={14} style={{ color: 'var(--brand-deep)' }} />
+            {regionLoading ? 'Loading...' : activeRegion?.name || 'Select Region'}
+            <ChevronDown
+              size={12}
+              style={{
+                color: 'var(--text-tertiary)',
+                transform: regionOpen ? 'rotate(180deg)' : 'rotate(0)',
+                transition: 'transform 0.2s',
+              }}
+            />
+          </button>
+
+          {regionOpen && regions.length > 0 && (
+            <div
+              className="absolute right-0 top-full mt-1 w-64 rounded-lg border shadow-lg z-50 overflow-hidden"
+              style={{
+                backgroundColor: 'var(--bg-surface)',
+                borderColor: 'var(--border-primary)',
+              }}
+            >
+              <div
+                className="px-3 py-2 border-b text-[10px] font-semibold uppercase tracking-wider"
+                style={{ color: 'var(--text-tertiary)', borderColor: 'var(--border-subtle)' }}
+              >
+                Workspace Region
+              </div>
+              {regions.map((region) => {
+                const isActive = activeRegion?.slug === region.slug;
+                return (
+                  <button
+                    key={region.slug}
+                    onClick={() => {
+                      setActiveRegion(region);
+                      setRegionOpen(false);
+                    }}
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 text-left text-sm transition-colors duration-150 hover:bg-[var(--bg-elevated)]"
+                    style={{
+                      color: isActive ? 'var(--brand-deep)' : 'var(--text-primary)',
+                      backgroundColor: isActive ? 'rgba(10, 126, 140, 0.08)' : undefined,
+                    }}
+                  >
+                    <MapPin
+                      size={14}
+                      style={{ color: isActive ? 'var(--brand-deep)' : 'var(--text-tertiary)' }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{region.name}</p>
+                      <p
+                        className="text-[10px] mt-0.5"
+                        style={{ color: 'var(--text-tertiary)' }}
+                      >
+                        {region.state} · {region.counties.join(', ')}
+                      </p>
+                    </div>
+                    {isActive && (
+                      <Check size={14} style={{ color: 'var(--brand-deep)' }} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Notifications */}

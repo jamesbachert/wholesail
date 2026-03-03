@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Sliders,
   MapPin,
@@ -12,20 +13,21 @@ import {
   RefreshCw,
   AlertCircle,
   Globe,
-  Play,
   Loader2,
   CheckCircle2,
   XCircle,
   Clock,
-  FileText,
   ExternalLink,
   Eye,
   EyeOff,
   Trash2,
   ChevronDown,
   ChevronUp,
+  Settings,
+  X,
 } from 'lucide-react';
 import { useApi } from '@/lib/hooks';
+import { useRegion } from '@/components/shared/RegionProvider';
 
 type SettingsTab = 'scoring' | 'regions' | 'sources' | 'notifications' | 'apikeys';
 
@@ -89,105 +91,21 @@ export default function SettingsPage() {
 }
 
 // ============================================================
-// DATA SOURCE SETTINGS (with live run capability)
+// DATA SOURCE SETTINGS — connector configuration
 // ============================================================
 
 function SourceSettings() {
-  // Filter connectors by active region — change this when multi-region support is added
-  const activeRegionSlug = 'lehigh-valley';
+  const { activeRegion } = useRegion();
+  const activeRegionSlug = activeRegion?.slug || 'lehigh-valley';
   const { data: connectorData, loading, refetch } = useApi<any>(
     `/api/connectors/status?region=${activeRegionSlug}`
   );
-  const [runningSlug, setRunningSlug] = useState<string | null>(null);
-  const [lastResult, setLastResult] = useState<any>(null);
-  const [pasteModalSlug, setPasteModalSlug] = useState<string | null>(null);
-  const [pasteData, setPasteData] = useState('');
+  const [configModalSlug, setConfigModalSlug] = useState<string | null>(null);
 
   const connectors = connectorData?.connectors || [];
 
-  // Check if a connector requires manual input
-  const isManualConnector = (slug: string) =>
-    slug === 'northampton-sheriff-sales';
-
-  const runConnector = async (slug: string, manualData?: string) => {
-    setRunningSlug(slug);
-    setLastResult(null);
-    setPasteModalSlug(null);
-    try {
-      const bodyPayload: any = {};
-      if (manualData) bodyPayload.data = manualData;
-
-      const res = await fetch(`/api/connectors/run/${slug}`, {
-        method: 'POST',
-        headers: {
-          'x-connector-secret': 'wholesail-run-2026',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(bodyPayload),
-      });
-      const data = await res.json();
-      setLastResult(data);
-      refetch();
-    } catch (err: any) {
-      setLastResult({ success: false, error: err.message });
-    } finally {
-      setRunningSlug(null);
-      setPasteData('');
-    }
-  };
-
   return (
     <div className="space-y-4">
-      {/* Last run result */}
-      {lastResult && (
-        <div
-          className={`ws-card p-4 border-l-4`}
-          style={{
-            borderLeftColor: lastResult.success || lastResult.newLeads >= 0
-              ? 'var(--success)'
-              : 'var(--danger)',
-          }}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            {lastResult.success || lastResult.newLeads >= 0 ? (
-              <CheckCircle2 size={16} style={{ color: 'var(--success)' }} />
-            ) : (
-              <XCircle size={16} style={{ color: 'var(--danger)' }} />
-            )}
-            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-              {lastResult.connector || 'Connector'} — Import Complete
-            </span>
-          </div>
-          {lastResult.newLeads !== undefined && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-              <MiniStat label="Records Found" value={lastResult.rawRecords} />
-              <MiniStat label="New Leads" value={lastResult.newLeads} color="var(--success)" />
-              <MiniStat label="Updated" value={lastResult.updatedLeads} color="var(--brand-ocean)" />
-              <MiniStat label="Errors" value={lastResult.errors} color={lastResult.errors > 0 ? 'var(--danger)' : undefined} />
-            </div>
-          )}
-          {lastResult.duration && (
-            <p className="text-[10px] mt-2" style={{ color: 'var(--text-tertiary)' }}>
-              Completed in {(lastResult.duration / 1000).toFixed(1)}s
-            </p>
-          )}
-          {lastResult.errorMessages?.length > 0 && (
-            <div className="mt-2 space-y-1">
-              {lastResult.errorMessages.slice(0, 3).map((msg: string, i: number) => (
-                <p key={i} className="text-xs" style={{ color: 'var(--danger)' }}>
-                  {msg}
-                </p>
-              ))}
-            </div>
-          )}
-          {lastResult.error && (
-            <p className="text-xs mt-1" style={{ color: 'var(--danger)' }}>
-              {lastResult.error}: {lastResult.message}
-            </p>
-          )}
-        </div>
-      )}
-
       <div className="ws-card">
         <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border-primary)' }}>
           <div>
@@ -195,7 +113,7 @@ function SourceSettings() {
               Data Source Connectors
             </h3>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-              Run connectors to import leads from public records
+              Configure connectors and their regional availability
             </p>
           </div>
           <button onClick={() => refetch()} className="ws-btn-ghost text-xs">
@@ -259,32 +177,11 @@ function SourceSettings() {
                       <span className="ws-tag ws-tag-neutral text-[10px]">Ready</span>
                     )}
                     <button
-                      onClick={() => {
-                        if (isManualConnector(source.slug)) {
-                          setPasteModalSlug(source.slug);
-                        } else {
-                          runConnector(source.slug);
-                        }
-                      }}
-                      disabled={runningSlug === source.slug}
-                      className="ws-btn-primary text-xs"
-                      style={{
-                        opacity: runningSlug === source.slug ? 0.7 : 1,
-                      }}
+                      onClick={() => setConfigModalSlug(source.slug)}
+                      className="ws-btn-ghost p-2 rounded-lg"
+                      title="Configure regions"
                     >
-                      {runningSlug === source.slug ? (
-                        <>
-                          <Loader2 size={14} className="animate-spin" /> Running...
-                        </>
-                      ) : isManualConnector(source.slug) ? (
-                        <>
-                          <FileText size={14} /> Paste Data
-                        </>
-                      ) : (
-                        <>
-                          <Play size={14} /> Run Now
-                        </>
-                      )}
+                      <Settings size={16} />
                     </button>
                   </div>
                 </div>
@@ -292,62 +189,13 @@ function SourceSettings() {
             ) : (
               <div className="px-5 py-8 text-center">
                 <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  No connectors registered yet.
+                  No connectors available for this region.
                 </p>
               </div>
             )}
           </div>
         )}
       </div>
-
-      {/* Paste Data Modal */}
-      {pasteModalSlug && (
-        <div className="ws-card p-5" style={{ border: '2px solid var(--brand-deep)' }}>
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-              Paste Sale List Data
-            </h4>
-            <button
-              onClick={() => { setPasteModalSlug(null); setPasteData(''); }}
-              className="ws-btn-ghost text-xs"
-            >
-              Cancel
-            </button>
-          </div>
-          <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
-            Go to{' '}
-            <a
-              href="https://web.northamptoncounty.org/SheriffSale/SheriffSale.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline"
-              style={{ color: 'var(--brand-ocean)' }}
-            >
-              Northampton County Sheriff Sale
-            </a>
-            , select all the listing text (Ctrl+A), copy it, and paste below.
-          </p>
-          <textarea
-            value={pasteData}
-            onChange={(e) => setPasteData(e.target.value)}
-            placeholder="Paste the sale list text here...&#10;&#10;Example format:&#10;2026-001  123 Main St  Easton PA 18042  John Doe  Bank of America  3/6/2026"
-            rows={8}
-            className="ws-input resize-none font-mono text-xs"
-          />
-          <div className="flex items-center justify-between mt-3">
-            <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-              {pasteData.split('\n').filter(Boolean).length} lines detected
-            </span>
-            <button
-              onClick={() => runConnector(pasteModalSlug, pasteData)}
-              disabled={!pasteData.trim()}
-              className="ws-btn-primary text-xs"
-            >
-              <Play size={14} /> Import {pasteData.split('\n').filter(Boolean).length} Lines
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Cron setup info */}
       <div className="ws-card p-5">
@@ -377,16 +225,234 @@ function SourceSettings() {
           Recommended: every 6-12 hours. Update the secret in your .env for production.
         </p>
       </div>
+
+      {/* Connector Config Modal */}
+      {configModalSlug && (
+        <ConnectorConfigModal
+          connectorSlug={configModalSlug}
+          onClose={() => {
+            setConfigModalSlug(null);
+            refetch();
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function MiniStat({ label, value, color }: { label: string; value: number; color?: string }) {
-  return (
-    <div className="text-center p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
-      <p className="text-[10px] font-semibold uppercase" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
-      <p className="text-lg font-bold" style={{ color: color || 'var(--text-primary)' }}>{value}</p>
-    </div>
+function ConnectorConfigModal({
+  connectorSlug,
+  onClose,
+}: {
+  connectorSlug: string;
+  onClose: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [connectorName, setConnectorName] = useState('');
+  const [description, setDescription] = useState('');
+  const [supportedZips, setSupportedZips] = useState<Array<{ zip: string; label: string }>>([]);
+  const [allRegions, setAllRegions] = useState<Array<{ id: string; name: string; slug: string }>>([]);
+  const [enabledRegionIds, setEnabledRegionIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    fetch(`/api/connectors/${connectorSlug}/regions`)
+      .then((res) => res.json())
+      .then((data) => {
+        setConnectorName(data.connectorName || connectorSlug);
+        setDescription(data.description || '');
+        setSupportedZips(data.supportedZipCodes || []);
+        setAllRegions(data.allRegions || []);
+        const enabled = (data.assignments || [])
+          .filter((a: any) => a.isEnabled)
+          .map((a: any) => a.regionId);
+        setEnabledRegionIds(new Set(enabled));
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [connectorSlug]);
+
+  const toggleRegion = (regionId: string) => {
+    setSaved(false);
+    setEnabledRegionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(regionId)) next.delete(regionId);
+      else next.add(regionId);
+      return next;
+    });
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await fetch(`/api/connectors/${connectorSlug}/regions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ regionIds: Array.from(enabledRegionIds) }),
+      });
+      setSaved(true);
+    } catch {
+      // Silent fail — user can retry
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-black/50" />
+      <div
+        className="ws-card relative z-10 w-full max-w-md overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-5 py-4 border-b"
+          style={{ borderColor: 'var(--border-primary)' }}
+        >
+          <div>
+            <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+              {connectorName}
+            </h3>
+            {description && (
+              <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                {description}
+              </p>
+            )}
+          </div>
+          <button onClick={onClose} className="ws-btn-ghost p-1.5 rounded-lg">
+            <X size={16} />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-8 gap-2" style={{ color: 'var(--text-secondary)' }}>
+            <Loader2 size={16} className="animate-spin" /> Loading...
+          </div>
+        ) : (
+          <div className="p-5 space-y-5">
+            {/* Supported Zip Codes */}
+            {supportedZips.length > 0 && (
+              <div>
+                <p
+                  className="text-[10px] font-semibold uppercase tracking-wider mb-2"
+                  style={{ color: 'var(--text-tertiary)' }}
+                >
+                  Supported Zip Codes ({supportedZips.length})
+                </p>
+                <div
+                  className="rounded-lg border overflow-y-auto"
+                  style={{
+                    borderColor: 'var(--border-primary)',
+                    backgroundColor: 'var(--bg-sunken)',
+                    maxHeight: '10.5rem',
+                  }}
+                >
+                  {supportedZips.map(({ zip, label }, i) => (
+                    <div
+                      key={zip}
+                      className="flex items-center gap-3 px-3 py-1.5 text-xs"
+                      style={{
+                        borderBottom: i < supportedZips.length - 1 ? '1px solid var(--border-primary)' : undefined,
+                      }}
+                    >
+                      <span className="font-mono font-medium" style={{ color: 'var(--text-primary)' }}>
+                        {zip}
+                      </span>
+                      <span style={{ color: 'var(--text-tertiary)' }}>{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Region Assignment */}
+            <div>
+              <p
+                className="text-[10px] font-semibold uppercase tracking-wider mb-2"
+                style={{ color: 'var(--text-tertiary)' }}
+              >
+                Assigned Regions
+              </p>
+              <div className="space-y-2">
+                {allRegions.map((region) => {
+                  const isChecked = enabledRegionIds.has(region.id);
+                  return (
+                    <label
+                      key={region.id}
+                      className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors hover:bg-[var(--bg-elevated)]"
+                      style={{
+                        backgroundColor: isChecked ? 'rgba(10, 126, 140, 0.08)' : undefined,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleRegion(region.id)}
+                        className="w-4 h-4 rounded accent-[var(--brand-deep)]"
+                      />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                          {region.name}
+                        </p>
+                        <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                          {region.slug}
+                        </p>
+                      </div>
+                      {isChecked && (
+                        <Check size={14} style={{ color: 'var(--brand-deep)' }} />
+                      )}
+                    </label>
+                  );
+                })}
+                {allRegions.length === 0 && (
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    No regions available. Add regions in Settings &gt; Regions.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-between pt-2">
+              {saved && (
+                <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--success)' }}>
+                  <CheckCircle2 size={14} /> Saved
+                </span>
+              )}
+              {!saved && <span />}
+              <div className="flex items-center gap-2">
+                <button onClick={onClose} className="ws-btn-secondary text-xs">
+                  Cancel
+                </button>
+                <button
+                  onClick={save}
+                  disabled={saving}
+                  className="ws-btn-primary text-xs"
+                  style={{ opacity: saving ? 0.7 : 1 }}
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Check size={14} /> Save
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body
   );
 }
 

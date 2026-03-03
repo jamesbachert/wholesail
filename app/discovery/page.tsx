@@ -22,6 +22,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useApi } from '@/lib/hooks';
+import { useRegion } from '@/components/shared/RegionProvider';
 import { getScoreColorHex, getSignalTagColor, timeAgo } from '@/lib/mockData';
 import { StreetViewButton } from '@/components/leads/StreetViewModal';
 
@@ -83,6 +84,8 @@ function getStatusDisplay(status: string) {
 }
 
 export default function DiscoveryPage() {
+  const { activeRegion } = useRegion();
+  const regionSlug = activeRegion?.slug || 'lehigh-valley';
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
@@ -96,6 +99,7 @@ export default function DiscoveryPage() {
   const [enriching, setEnriching] = useState<string | null>(null);
   const [enrichResult, setEnrichResult] = useState<any>(null);
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  const [disabledSlugs, setDisabledSlugs] = useState<Set<string>>(new Set());
   const [promoting, setPromoting] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const [actionResult, setActionResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -103,7 +107,7 @@ export default function DiscoveryPage() {
   // Build API URL for discovered leads
   const leadsUrl = useMemo(() => {
     const params = new URLSearchParams();
-    params.set('region', 'lehigh-valley');
+    params.set('region', regionSlug);
     params.set('sortBy', sortField);
     params.set('sortDir', sortDir);
     if (statusFilter !== 'all') params.set('status', statusFilter);
@@ -111,15 +115,15 @@ export default function DiscoveryPage() {
     if (sourceFilter !== 'all') params.set('source', sourceFilter);
     if (minSourcesFilter) params.set('minSources', minSourcesFilter);
     return `/api/discovery/leads?${params.toString()}`;
-  }, [sortField, sortDir, statusFilter, searchQuery, sourceFilter, minSourcesFilter]);
+  }, [regionSlug, sortField, sortDir, statusFilter, searchQuery, sourceFilter, minSourcesFilter]);
 
   const { data: leadsData, loading: leadsLoading, refetch: refetchLeads } = useApi<any>(leadsUrl);
-  const { data: sourcesData, refetch: refetchSources } = useApi<any>('/api/discovery/sources?region=lehigh-valley');
+  const { data: sourcesData, refetch: refetchSources } = useApi<any>(`/api/discovery/sources?region=${regionSlug}`);
 
   const leads = leadsData?.leads || [];
   const total = leadsData?.total || 0;
-  const sources = sourcesData?.sources || [];
-  const enrichmentSources = sourcesData?.enrichmentSources || [];
+  const sources = (sourcesData?.sources || []).sort((a: any, b: any) => a.name.localeCompare(b.name));
+  const enrichmentSources = (sourcesData?.enrichmentSources || []).sort((a: any, b: any) => a.name.localeCompare(b.name));
   const allSources = [...sources, ...enrichmentSources];
   const availableSources = leadsData?.filterOptions?.sources || [];
 
@@ -190,19 +194,21 @@ export default function DiscoveryPage() {
     }
   }, [refetchLeads, refetchSources]);
 
-  // Sync All handler
+  // Sync All handler — skips disabled connectors
   const handleSyncAll = useCallback(async () => {
+    const enabledSources = sources.filter((s: any) => !disabledSlugs.has(s.slug));
+    if (enabledSources.length === 0) return;
     setSyncing('__all__');
     setSyncResult(null);
     try {
-      for (const source of sources) {
+      for (const source of enabledSources) {
         await fetch('/api/discovery/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ connectorSlug: source.slug }),
         });
       }
-      setSyncResult({ success: true, total: sources.length, message: `Synced ${sources.length} sources` });
+      setSyncResult({ success: true, total: enabledSources.length, message: `Synced ${enabledSources.length} sources` });
       refetchLeads();
       refetchSources();
     } catch (err: any) {
@@ -210,7 +216,7 @@ export default function DiscoveryPage() {
     } finally {
       setSyncing(null);
     }
-  }, [sources, refetchLeads, refetchSources]);
+  }, [sources, disabledSlugs, refetchLeads, refetchSources]);
 
   // Promote handler
   const handlePromote = useCallback(async () => {
@@ -351,16 +357,6 @@ export default function DiscoveryPage() {
           onClick={() => setSourcesExpanded((v) => !v)}
         >
           <Database size={16} style={{ color: 'var(--brand-deep)' }} />
-          <div className="flex items-center gap-1.5">
-            {allSources.map((s: any) => (
-              <span
-                key={s.slug}
-                className="w-2 h-2 rounded-full shrink-0"
-                style={{ backgroundColor: getSourceStatusColor(s) }}
-                title={`${s.name}: ${s.lastSync?.status || 'never synced'}`}
-              />
-            ))}
-          </div>
           <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
             {allSources.length} source{allSources.length !== 1 ? 's' : ''}
             {mostRecentSync && <> · Last synced {timeAgo(mostRecentSync)}</>}
@@ -387,6 +383,28 @@ export default function DiscoveryPage() {
             {/* Lead Discovery Section */}
             <div className="mt-3">
               <div className="flex items-center gap-1.5 mb-2">
+                <input
+                  type="checkbox"
+                  checked={sources.length > 0 && sources.every((s: any) => !disabledSlugs.has(s.slug))}
+                  ref={(el) => {
+                    if (el) {
+                      const enabledCount = sources.filter((s: any) => !disabledSlugs.has(s.slug)).length;
+                      el.indeterminate = enabledCount > 0 && enabledCount < sources.length;
+                    }
+                  }}
+                  onChange={(e) => {
+                    setDisabledSlugs((prev) => {
+                      const next = new Set(prev);
+                      if (e.target.checked) {
+                        sources.forEach((s: any) => next.delete(s.slug));
+                      } else {
+                        sources.forEach((s: any) => next.add(s.slug));
+                      }
+                      return next;
+                    });
+                  }}
+                  className="w-3.5 h-3.5 rounded accent-[var(--brand-deep)] shrink-0 cursor-pointer"
+                />
                 <Database size={13} style={{ color: 'var(--text-tertiary)' }} />
                 <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
                   Lead Discovery
@@ -396,47 +414,70 @@ export default function DiscoveryPage() {
                 </span>
               </div>
               <div className="space-y-1.5">
-                {sources.map((source: any) => (
-                  <div
-                    key={source.slug}
-                    className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg"
-                    style={{ backgroundColor: 'var(--bg-elevated)' }}
-                  >
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <span
-                        className="w-2 h-2 rounded-full shrink-0"
-                        style={{ backgroundColor: getSourceStatusColor(source) }}
-                      />
-                      <span className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-                        {source.name}
-                      </span>
-                      {source.lastSync?.status === 'success' && (
-                        <span className="ws-tag ws-tag-success text-[10px] shrink-0">Active</span>
-                      )}
-                      {source.lastSync?.status === 'error' && (
-                        <span className="ws-tag ws-tag-danger text-[10px] shrink-0">Error</span>
-                      )}
-                      {!source.lastSync && (
-                        <span className="ws-tag ws-tag-neutral text-[10px] shrink-0">Never Synced</span>
-                      )}
+                {sources.map((source: any) => {
+                  const isDisabled = disabledSlugs.has(source.slug);
+                  return (
+                    <div
+                      key={source.slug}
+                      className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg"
+                      style={{ backgroundColor: 'var(--bg-elevated)', opacity: isDisabled ? 0.45 : 1 }}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <input
+                          type="checkbox"
+                          checked={!isDisabled}
+                          onChange={() => setDisabledSlugs((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(source.slug)) next.delete(source.slug);
+                            else next.add(source.slug);
+                            return next;
+                          })}
+                          className="w-3.5 h-3.5 rounded accent-[var(--brand-deep)] shrink-0 cursor-pointer"
+                        />
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: getSourceStatusColor(source) }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                              {source.name}
+                            </span>
+                            {source.lastSync?.status === 'success' && (
+                              <span className="ws-tag ws-tag-success text-[10px] shrink-0">Active</span>
+                            )}
+                            {source.lastSync?.status === 'error' && (
+                              <span className="ws-tag ws-tag-danger text-[10px] shrink-0">Error</span>
+                            )}
+                            {!source.lastSync && (
+                              <span className="ws-tag ws-tag-neutral text-[10px] shrink-0">Never Synced</span>
+                            )}
+                          </div>
+                          {source.description && (
+                            <p className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--text-tertiary)' }}>
+                              {source.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        {source.lastSync && (
+                          <span className="text-[11px] hidden sm:inline" style={{ color: 'var(--text-tertiary)' }}>
+                            {timeAgo(source.lastSync.completedAt || source.lastSync.startedAt)} · {source.signalCount} signals
+                          </span>
+                        )}
+                        <button
+                          onClick={() => handleSync(source.slug)}
+                          disabled={syncing !== null || isDisabled}
+                          className="ws-btn-secondary text-[11px] flex items-center gap-1 py-1 px-2.5"
+                        >
+                          {syncing === source.slug ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                          {syncing === source.slug ? 'Syncing...' : 'Sync'}
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      {source.lastSync && (
-                        <span className="text-[11px] hidden sm:inline" style={{ color: 'var(--text-tertiary)' }}>
-                          {timeAgo(source.lastSync.completedAt || source.lastSync.startedAt)} · {source.signalCount} signals
-                        </span>
-                      )}
-                      <button
-                        onClick={() => handleSync(source.slug)}
-                        disabled={syncing !== null}
-                        className="ws-btn-secondary text-[11px] flex items-center gap-1 py-1 px-2.5"
-                      >
-                        {syncing === source.slug ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                        {syncing === source.slug ? 'Syncing...' : 'Sync'}
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -444,6 +485,28 @@ export default function DiscoveryPage() {
             {enrichmentSources.length > 0 && (
               <div className="mt-4">
                 <div className="flex items-center gap-1.5 mb-2">
+                  <input
+                    type="checkbox"
+                    checked={enrichmentSources.length > 0 && enrichmentSources.every((s: any) => !disabledSlugs.has(s.slug))}
+                    ref={(el) => {
+                      if (el) {
+                        const enabledCount = enrichmentSources.filter((s: any) => !disabledSlugs.has(s.slug)).length;
+                        el.indeterminate = enabledCount > 0 && enabledCount < enrichmentSources.length;
+                      }
+                    }}
+                    onChange={(e) => {
+                      setDisabledSlugs((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) {
+                          enrichmentSources.forEach((s: any) => next.delete(s.slug));
+                        } else {
+                          enrichmentSources.forEach((s: any) => next.add(s.slug));
+                        }
+                        return next;
+                      });
+                    }}
+                    className="w-3.5 h-3.5 rounded accent-[var(--brand-deep)] shrink-0 cursor-pointer"
+                  />
                   <Sparkles size={13} style={{ color: 'var(--text-tertiary)' }} />
                   <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
                     Data Enrichment
@@ -453,46 +516,69 @@ export default function DiscoveryPage() {
                   </span>
                 </div>
                 <div className="space-y-1.5">
-                  {enrichmentSources.map((source: any) => (
-                    <div
-                      key={source.slug}
-                      className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg"
-                      style={{ backgroundColor: 'var(--bg-elevated)' }}
-                    >
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <span
-                          className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: getSourceStatusColor(source) }}
-                        />
-                        <span className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-                          {source.name}
-                        </span>
-                        {source.lastSync?.status === 'success' && (
-                          <span className="ws-tag ws-tag-success text-[10px] shrink-0">
-                            {source.signalCount} enriched
-                          </span>
-                        )}
-                        {!source.lastSync && (
-                          <span className="ws-tag ws-tag-neutral text-[10px] shrink-0">Not Run</span>
-                        )}
+                  {enrichmentSources.map((source: any) => {
+                    const isDisabled = disabledSlugs.has(source.slug);
+                    return (
+                      <div
+                        key={source.slug}
+                        className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg"
+                        style={{ backgroundColor: 'var(--bg-elevated)', opacity: isDisabled ? 0.45 : 1 }}
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <input
+                            type="checkbox"
+                            checked={!isDisabled}
+                            onChange={() => setDisabledSlugs((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(source.slug)) next.delete(source.slug);
+                              else next.add(source.slug);
+                              return next;
+                            })}
+                            className="w-3.5 h-3.5 rounded accent-[var(--brand-deep)] shrink-0 cursor-pointer"
+                          />
+                          <span
+                            className="w-2 h-2 rounded-full shrink-0"
+                            style={{ backgroundColor: getSourceStatusColor(source) }}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                                {source.name}
+                              </span>
+                              {source.lastSync?.status === 'success' && (
+                                <span className="ws-tag ws-tag-success text-[10px] shrink-0">
+                                  {source.signalCount} enriched
+                                </span>
+                              )}
+                              {!source.lastSync && (
+                                <span className="ws-tag ws-tag-neutral text-[10px] shrink-0">Not Run</span>
+                              )}
+                            </div>
+                            {source.description && (
+                              <p className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--text-tertiary)' }}>
+                                {source.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          {source.lastSync && (
+                            <span className="text-[11px] hidden sm:inline" style={{ color: 'var(--text-tertiary)' }}>
+                              {timeAgo(source.lastSync.completedAt || source.lastSync.startedAt)}
+                            </span>
+                          )}
+                          <button
+                            onClick={() => handleEnrich(source.slug)}
+                            disabled={enriching !== null || syncing !== null || isDisabled}
+                            className="ws-btn-secondary text-[11px] flex items-center gap-1 py-1 px-2.5"
+                          >
+                            {enriching === source.slug ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                            {enriching === source.slug ? 'Enriching...' : 'Enrich All'}
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        {source.lastSync && (
-                          <span className="text-[11px] hidden sm:inline" style={{ color: 'var(--text-tertiary)' }}>
-                            {timeAgo(source.lastSync.completedAt || source.lastSync.startedAt)}
-                          </span>
-                        )}
-                        <button
-                          onClick={() => handleEnrich(source.slug)}
-                          disabled={enriching !== null || syncing !== null}
-                          className="ws-btn-secondary text-[11px] flex items-center gap-1 py-1 px-2.5"
-                        >
-                          {enriching === source.slug ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                          {enriching === source.slug ? 'Enriching...' : 'Enrich All'}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

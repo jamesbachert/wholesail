@@ -17,7 +17,8 @@ const STACKABLE_SIGNAL_TYPES = ['code_violation'];
 
 export async function importRecords(
   records: ParsedRecord[],
-  dataSourceSlug: string
+  dataSourceSlug: string,
+  regionSlug?: string
 ): Promise<ConnectorResult> {
   const startTime = Date.now();
   let newLeads = 0;
@@ -25,9 +26,9 @@ export async function importRecords(
   let errors = 0;
   const errorMessages: string[] = [];
 
-  // Get the region for Lehigh Valley
+  // Get the region — use provided slug or fall back to lehigh-valley
   const region = await prisma.region.findFirst({
-    where: { slug: 'lehigh-valley', isActive: true },
+    where: { slug: regionSlug || 'lehigh-valley', isActive: true },
   });
 
   if (!region) {
@@ -36,7 +37,7 @@ export async function importRecords(
       newLeads: 0,
       updatedLeads: 0,
       errors: 1,
-      errorMessages: ['No active Lehigh Valley region found. Run prisma db seed first.'],
+      errorMessages: [`No active region found for slug "${regionSlug || 'lehigh-valley'}". Run prisma db seed first.`],
       rawRecords: records.length,
       duration: Date.now() - startTime,
     };
