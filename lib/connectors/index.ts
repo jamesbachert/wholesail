@@ -29,10 +29,10 @@ interface RegisteredConnector {
 
 const importConnectors: RegisteredConnector[] = [
   // Pennsylvania — Lehigh Valley
-  { connector: new LehighSheriffSalesConnector(), mode: 'both' },
+  { connector: new LehighSheriffSalesConnector(), mode: 'discovery' },
   { connector: new LehighRepositoryConnector(), mode: 'import' },
-  { connector: new NorthamptonSheriffSalesConnector(), mode: 'both' },
-  { connector: new AllentownCodeViolationsConnector(), mode: 'both' },
+  { connector: new NorthamptonSheriffSalesConnector(), mode: 'discovery' },
+  { connector: new AllentownCodeViolationsConnector(), mode: 'discovery' },
 ];
 
 const connectorMap = new Map<string, RegisteredConnector>(
@@ -92,7 +92,7 @@ export function getDiscoveryConnectorsForRegion(regionSlug: string) {
  * Get all connectors that can feed the Discovery system.
  * Includes:
  *   - Pure discovery connectors (mode: 'discovery')
- *   - Import connectors with mode: 'both'
+ *   - Import connectors with mode: 'discovery'
  */
 export function getDiscoveryCapableConnectors(regionSlug: string) {
   const result: Array<{
@@ -118,15 +118,15 @@ export function getDiscoveryCapableConnectors(regionSlug: string) {
     }
   }
 
-  // Import connectors with mode 'both'
+  // Import connectors with mode 'discovery' or 'both'
   for (const rc of importConnectors) {
-    if (rc.mode === 'both' && rc.connector.regionSlug === regionSlug) {
+    if ((rc.mode === 'discovery' || rc.mode === 'both') && rc.connector.regionSlug === regionSlug) {
       result.push({
         name: rc.connector.name,
         slug: rc.connector.slug,
         regionSlug: rc.connector.regionSlug,
         description: rc.connector.description,
-        mode: 'both',
+        mode: rc.mode,
         type: 'import',
       });
     }

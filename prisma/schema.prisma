@@ -110,7 +110,7 @@ enum LeadStatus {
   UNDER_CONTRACT
   HANDED_OFF
   CLOSED
-  DEAD
+  ARCHIVE
   DO_NOT_CONTACT
 }
 

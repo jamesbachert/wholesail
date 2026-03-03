@@ -114,7 +114,7 @@ const COVERAGE: ConnectorCoverage[] = [
     connectorKind: 'code_violation',
     description: 'Open code enforcement cases from the City of Allentown.',
     regionSlug: 'lehigh-valley',
-    enrichmentMode: 'cross_reference',
+    enrichmentMode: 'live_lookup',
     supportedZipCodes: ['18101', '18102', '18103', '18104', '18109'],
   },
   {

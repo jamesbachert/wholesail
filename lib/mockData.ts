@@ -56,7 +56,7 @@ export function getStatusLabel(status: string): string {
     UNDER_CONTRACT: 'Under Contract',
     HANDED_OFF: 'Handed Off',
     CLOSED: 'Closed',
-    DEAD: 'Dead',
+    ARCHIVE: 'Archive',
     DO_NOT_CONTACT: 'Do Not Contact',
   };
   return map[status] || status;
@@ -71,7 +71,7 @@ export function getStatusColor(status: string): string {
     UNDER_CONTRACT: 'success',
     HANDED_OFF: 'info',
     CLOSED: 'success',
-    DEAD: 'neutral',
+    ARCHIVE: 'neutral',
     DO_NOT_CONTACT: 'neutral',
   };
   return map[status] || 'neutral';

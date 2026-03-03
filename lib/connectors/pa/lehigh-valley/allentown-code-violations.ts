@@ -1,10 +1,15 @@
 import { DataSourceConnector, ParsedRecord } from '../../types';
+import { LookupConnector, CodeViolationLookupResult } from '../../lookup-types';
 
 // ============================================================
 // ALLENTOWN CODE VIOLATIONS CONNECTOR
 // Source: City of Allentown EnerGov Code Cases (ArcGIS FeatureServer)
 // URL: https://services1.arcgis.com/WUqVDRuvIiIiH2Pl/ArcGIS/rest/services/EnerGov_Code_Cases_Current/FeatureServer/0
 // Data: Open code enforcement cases with address, case number, dates
+//
+// Dual-purpose:
+//   1. DataSourceConnector (fetchAndParse) — bulk import for sync
+//   2. LookupConnector (lookupByAddress) — live enrichment for individual leads
 // ============================================================
 
 const FEATURE_SERVER_URL =
@@ -41,12 +46,20 @@ interface ArcGISResponse {
   exceededTransferLimit?: boolean;
 }
 
-export class AllentownCodeViolationsConnector implements DataSourceConnector {
+// Allentown zip codes for lookup support
+const ALLENTOWN_ZIPS = ['18101', '18102', '18103', '18104', '18109'];
+
+export class AllentownCodeViolationsConnector implements DataSourceConnector, LookupConnector {
   name = 'Allentown Code Violations';
   slug = 'allentown-code-violations';
-  type = 'automated' as const;
+  type = 'code_violation' as const;
   regionSlug = 'lehigh-valley';
   description = 'Active code enforcement cases from the City of Allentown EnerGov system via ArcGIS FeatureServer';
+  supportedZipCodes = ALLENTOWN_ZIPS;
+
+  // ============================================================
+  // BULK FETCH (DataSourceConnector)
+  // ============================================================
 
   async fetchAndParse(): Promise<ParsedRecord[]> {
     const allFeatures: ArcGISFeature[] = [];
@@ -120,6 +133,68 @@ export class AllentownCodeViolationsConnector implements DataSourceConnector {
 
     return records;
   }
+
+  // ============================================================
+  // LIVE LOOKUP (LookupConnector)
+  // Query ArcGIS for open code cases at a specific address.
+  // ============================================================
+
+  async lookupByAddress(address: string, zipCode: string): Promise<CodeViolationLookupResult> {
+    // Parse the address into components for ArcGIS query
+    // Input format: "909 N 17th St" → ADDRESSLINE1=909, search for rest
+    const upperAddr = address.toUpperCase().trim();
+
+    // Build a LIKE-based WHERE clause for flexibility
+    // ArcGIS concatenates: ADDRESSLINE1 + PREDIRECTION + ADDRESSLINE2 + STREETTYPE + POSTDIRECTION
+    // We'll search for a match on the full constructed address
+    const escapedAddr = upperAddr.replace(/'/g, "''");
+
+    const whereClause = `CLOSEDDATE IS NULL AND POSTALCODE = '${zipCode}' AND UPPER(CONCAT(ADDRESSLINE1, ' ', COALESCE(PREDIRECTION, ''), ' ', ADDRESSLINE2, ' ', COALESCE(STREETTYPE, ''), ' ', COALESCE(POSTDIRECTION, ''))) LIKE '%${escapedAddr}%'`;
+
+    const params = new URLSearchParams({
+      where: whereClause,
+      outFields: 'CASENUMBER,OPENEDDATE,CLOSEDDATE,STATUSNAME,ADDRESSLINE1,PREDIRECTION,ADDRESSLINE2,STREETTYPE,POSTDIRECTION,PARCELNUMBER,POSTALCODE',
+      resultRecordCount: '50',
+      orderByFields: 'OPENEDDATE DESC',
+      f: 'json',
+    });
+
+    const url = `${FEATURE_SERVER_URL}?${params.toString()}`;
+    console.log(`[Code Violation Lookup] Querying for "${address}" in ${zipCode}...`);
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`ArcGIS API returned ${response.status}: ${response.statusText}`);
+    }
+
+    const data: ArcGISResponse = await response.json();
+    const features = data.features || [];
+
+    console.log(`[Code Violation Lookup] Found ${features.length} open cases for "${address}"`);
+
+    if (features.length === 0) {
+      return { found: false, cases: [], rawData: {} };
+    }
+
+    const cases = features.map((f) => ({
+      caseNumber: f.attributes.CASENUMBER,
+      status: f.attributes.STATUSNAME,
+      openedDate: f.attributes.OPENEDDATE
+        ? new Date(f.attributes.OPENEDDATE).toISOString().split('T')[0]
+        : undefined,
+      parcelNumber: f.attributes.PARCELNUMBER || undefined,
+    }));
+
+    return {
+      found: true,
+      cases,
+      rawData: { features: features.map((f) => f.attributes) },
+    };
+  }
+
+  // ============================================================
+  // PRIVATE HELPERS
+  // ============================================================
 
   private parseFeature(feature: ArcGISFeature): ParsedRecord | null {
     const attrs = feature.attributes;

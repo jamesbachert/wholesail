@@ -94,6 +94,25 @@ export default function DiscoveryPage() {
   const [dismissing, setDismissing] = useState(false);
   const [actionResult, setActionResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  // Auto-import toggle per connector (persisted in localStorage)
+  const [autoImport, setAutoImport] = useState<Record<string, boolean>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const stored = localStorage.getItem('discovery-auto-import');
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleAutoImport = useCallback((slug: string) => {
+    setAutoImport((prev) => {
+      const updated = { ...prev, [slug]: !prev[slug] };
+      try { localStorage.setItem('discovery-auto-import', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  }, []);
+
   // Build API URL for discovered leads
   const leadsUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -151,7 +170,31 @@ export default function DiscoveryPage() {
         body: JSON.stringify({ connectorSlug: slug }),
       });
       const data = await res.json();
-      setSyncResult(data);
+
+      // Auto-import: promote all 'new' leads if toggle is on
+      let autoImportCount = 0;
+      if (autoImport[slug] && data.success && data.newCount > 0) {
+        try {
+          // Fetch newly created leads (status: 'new') from this source
+          const leadsRes = await fetch(`/api/discovery/leads?status=new&source=${slug}&limit=200`);
+          const leadsData = await leadsRes.json();
+          const newLeadIds = (leadsData.leads || []).map((l: any) => l.id);
+
+          if (newLeadIds.length > 0) {
+            const promoteRes = await fetch('/api/discovery/leads/promote', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ leadIds: newLeadIds }),
+            });
+            const promoteData = await promoteRes.json();
+            autoImportCount = promoteData.promoted || 0;
+          }
+        } catch (err) {
+          console.error('Auto-import error:', err);
+        }
+      }
+
+      setSyncResult({ ...data, autoImportCount });
       refetchLeads();
       refetchSources();
     } catch (err: any) {
@@ -159,7 +202,7 @@ export default function DiscoveryPage() {
     } finally {
       setSyncing(null);
     }
-  }, [refetchLeads, refetchSources]);
+  }, [refetchLeads, refetchSources, autoImport]);
 
   // Promote handler
   const handlePromote = useCallback(async () => {
@@ -298,12 +341,6 @@ export default function DiscoveryPage() {
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{source.name}</span>
-                  {source.mode === 'both' && (
-                    <span className="ws-tag ws-tag-info text-[10px]">Import + Discovery</span>
-                  )}
-                  {source.mode === 'discovery' && (
-                    <span className="ws-tag ws-tag-neutral text-[10px]">Discovery Only</span>
-                  )}
                   {source.lastSync?.status === 'success' && (
                     <span className="ws-tag ws-tag-success text-[10px]">Active</span>
                   )}
@@ -333,14 +370,30 @@ export default function DiscoveryPage() {
                   </div>
                 )}
               </div>
-              <button
-                onClick={() => handleSync(source.slug)}
-                disabled={syncing !== null}
-                className="ws-btn-secondary text-xs flex items-center gap-1.5 shrink-0"
-              >
-                {syncing === source.slug ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                {syncing === source.slug ? 'Syncing...' : 'Sync Now'}
-              </button>
+              <div className="flex items-center gap-3 shrink-0">
+                <label
+                  className="flex items-center gap-1.5 text-[10px] cursor-pointer select-none"
+                  style={{ color: autoImport[source.slug] ? 'var(--brand-deep)' : 'var(--text-tertiary)' }}
+                  title="Automatically import all new discoveries into your leads pipeline after sync"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!autoImport[source.slug]}
+                    onChange={() => toggleAutoImport(source.slug)}
+                    className="rounded border-gray-300"
+                    style={{ accentColor: 'var(--brand-deep)' }}
+                  />
+                  Auto-Import
+                </label>
+                <button
+                  onClick={() => handleSync(source.slug)}
+                  disabled={syncing !== null}
+                  className="ws-btn-secondary text-xs flex items-center gap-1.5"
+                >
+                  {syncing === source.slug ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                  {syncing === source.slug ? 'Syncing...' : 'Sync Now'}
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -370,6 +423,11 @@ export default function DiscoveryPage() {
                 <span>{syncResult.newCount} new</span>
                 <span>{syncResult.updatedCount} updated</span>
                 <span>{(syncResult.duration / 1000).toFixed(1)}s</span>
+                {syncResult.autoImportCount > 0 && (
+                  <span style={{ color: 'var(--success)' }}>
+                    {syncResult.autoImportCount} auto-imported to pipeline
+                  </span>
+                )}
               </div>
             )}
             {syncResult.errorMessages?.length > 0 && (

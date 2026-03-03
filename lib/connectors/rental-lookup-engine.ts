@@ -1,6 +1,7 @@
 import { prisma } from '../prisma';
 import { getLookupConnectorForZip, getRentalLicenseSupportedZipCodes } from './lookup-registry';
 import { recalculateScore } from './scoring';
+import { RentalLicenseLookupResult } from './lookup-types';
 
 // ============================================================
 // RENTAL LICENSE LOOKUP ENGINE
@@ -37,7 +38,7 @@ export async function checkRentalLicense(leadId: string): Promise<RentalCheckRes
   }
 
   // Look up the address
-  const result = await connector.lookupByAddress(property.address, zipCode);
+  const result = (await connector.lookupByAddress(property.address, zipCode)) as RentalLicenseLookupResult;
 
   if (result.found) {
     // Update property fields

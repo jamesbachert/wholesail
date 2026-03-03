@@ -26,7 +26,7 @@ import type { Filters, FilterOptions } from '@/components/leads/AdvancedFilters'
 type SortField = 'totalScore' | 'createdAt' | 'lastActivityAt' | 'lastContacted' | 'estimatedValue';
 type SortDir = 'asc' | 'desc';
 
-const statusFilters = ['ALL', 'NEW', 'CONTACTED', 'WARM', 'HOT', 'UNDER_CONTRACT', 'HANDED_OFF', 'CLOSED', 'DEAD'];
+const statusFilters = ['ALL', 'NEW', 'CONTACTED', 'WARM', 'HOT', 'UNDER_CONTRACT', 'HANDED_OFF', 'CLOSED', 'ARCHIVE'];
 
 export default function LeadsPage() {
   const [searchQuery, setSearchQuery] = useState('');

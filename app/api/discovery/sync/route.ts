@@ -9,7 +9,7 @@ import { discoverRecords } from '@/lib/connectors/discovery-engine';
 // POST /api/discovery/sync — trigger a sync for a discovery connector
 // Supports:
 //   1. Pure discovery connectors (have their own sync() method)
-//   2. Import connectors with mode 'both' (fetchAndParse → adapter → discoverRecords)
+//   2. Import connectors with mode 'discovery' (fetchAndParse → adapter → discoverRecords)
 export async function POST(request: NextRequest) {
   try {
     const { connectorSlug } = await request.json();
@@ -26,9 +26,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(result);
     }
 
-    // Try import connector with mode 'both'
+    // Try import connector with mode 'discovery' (uses fetchAndParse → adapter → discoverRecords)
     const registered = getConnectorWithMode(connectorSlug);
-    if (registered && (registered.mode === 'both')) {
+    if (registered && (registered.mode === 'discovery' || registered.mode === 'both')) {
       const connector = registered.connector;
       console.log(`[Discovery Sync] Starting discovery sync for import connector ${connector.name}...`);
 

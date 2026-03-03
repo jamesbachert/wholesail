@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getConnectorCoverage } from '@/lib/connectors/coverage-registry';
 import { crossReferenceEnrich, CrossReferenceResult } from '@/lib/connectors/cross-reference-engine';
 import { checkRentalLicense } from '@/lib/connectors/rental-lookup-engine';
+import { checkCodeViolations } from '@/lib/connectors/code-violation-lookup-engine';
 
 // POST /api/leads/[id]/enrich
 // Runs selected connectors against a lead to enrich it with signals.
@@ -27,10 +28,23 @@ export async function POST(
       }
 
       if (coverage.enrichmentMode === 'live_lookup') {
-        // Live lookup connectors (e.g. rental licenses)
+        // Live lookup connectors
         if (coverage.connectorKind === 'rental_license') {
           try {
             const result = await checkRentalLicense(id);
+            results.push({
+              slug,
+              name: coverage.name,
+              found: result.found,
+              signalsAdded: result.found ? 1 : 0,
+              error: result.error,
+            });
+          } catch (err: any) {
+            results.push({ slug, name: coverage.name, found: false, signalsAdded: 0, error: err.message });
+          }
+        } else if (coverage.connectorKind === 'code_violation') {
+          try {
+            const result = await checkCodeViolations(id);
             results.push({
               slug,
               name: coverage.name,

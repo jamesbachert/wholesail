@@ -256,32 +256,37 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
   const [editingProperty, setEditingProperty] = useState(false);
   const [editingOwner, setEditingOwner] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [checkingRental, setCheckingRental] = useState(false);
-  const [rentalSupported, setRentalSupported] = useState(false);
+  // Data Enrichment — connectors available for this zip
+  const [enrichConnectors, setEnrichConnectors] = useState<any[]>([]);
+  const [enrichingSlug, setEnrichingSlug] = useState<string | null>(null);
+  const [enrichResults, setEnrichResults] = useState<Record<string, { found: boolean; signalsAdded: number; error?: string }>>({});
 
   useEffect(() => {
     if (property.zipCode) {
-      fetch('/api/rental-lookup/supported-zips')
+      fetch(`/api/connectors/coverage?zip=${property.zipCode}`)
         .then((r) => r.json())
         .then((data) => {
-          setRentalSupported(data.zipCodes?.includes(property.zipCode) ?? false);
+          setEnrichConnectors(data.connectors || []);
         })
-        .catch(() => setRentalSupported(false));
+        .catch(() => setEnrichConnectors([]));
     }
   }, [property.zipCode]);
 
-  const handleCheckRental = async () => {
-    setCheckingRental(true);
+  const handleEnrichCheck = async (slug: string) => {
+    setEnrichingSlug(slug);
     try {
-      const res: any = await apiPost(`/api/leads/${leadId}/check-rental`, {});
-      if (res?.error) {
-        console.error('Rental check error:', res.error);
+      const res: any = await apiPost(`/api/leads/${leadId}/enrich`, {
+        connectorSlugs: [slug],
+      });
+      const result = res?.results?.[0];
+      if (result) {
+        setEnrichResults((prev) => ({ ...prev, [slug]: { found: result.found, signalsAdded: result.signalsAdded, error: result.error } }));
       }
       refetch();
     } catch (err) {
-      console.error('Failed to check rental:', err);
+      console.error('Enrichment check error:', err);
     } finally {
-      setCheckingRental(false);
+      setEnrichingSlug(null);
     }
   };
 
@@ -493,30 +498,7 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
               <DetailItem label="Zip Code" value={property.zipCode || '—'} />
               <DetailItem label="Vacant" value={property.isVacant != null ? (property.isVacant ? 'Yes' : 'No') : '—'} highlight={property.isVacant} />
               <DetailItem label="Absentee Owner" value={property.isAbsenteeOwner != null ? (property.isAbsenteeOwner ? 'Yes' : 'No') : '—'} highlight={property.isAbsenteeOwner} />
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>Rental Property</p>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium" style={{ color: property.isRentalProperty ? 'var(--brand-deep)' : 'var(--text-primary)' }}>
-                    {property.isRentalProperty != null ? (property.isRentalProperty ? 'Yes' : 'No') : '—'}
-                  </p>
-                  {rentalSupported && (
-                    <button
-                      onClick={handleCheckRental}
-                      disabled={checkingRental}
-                      className="ws-btn-ghost text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1"
-                      title="Check rental license database"
-                    >
-                      {checkingRental ? <Loader2 size={10} className="animate-spin" /> : <Search size={10} />}
-                      Check
-                    </button>
-                  )}
-                </div>
-                {property.isRentalProperty && property.rentalLicenseExpiration && (
-                  <p className="text-[10px] mt-0.5" style={{ color: new Date(property.rentalLicenseExpiration) < new Date() ? 'var(--danger)' : 'var(--text-tertiary)' }}>
-                    License expires: {formatDate(property.rentalLicenseExpiration)}
-                  </p>
-                )}
-              </div>
+              <DetailItem label="Rental Property" value={property.isRentalProperty != null ? (property.isRentalProperty ? 'Yes' : 'No') : '—'} highlight={property.isRentalProperty} />
             </div>
           )}
         </div>
@@ -622,6 +604,64 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
             </div>
           )}
         </div>
+
+        {/* Data Enrichment */}
+        {enrichConnectors.length > 0 && (
+          <div className="ws-card p-5">
+            <h3 className="text-sm font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              <Search size={16} style={{ color: 'var(--brand-deep)' }} /> Data Enrichment
+            </h3>
+            <div className="space-y-2">
+              {enrichConnectors.map((connector: any) => {
+                const isChecking = enrichingSlug === connector.slug;
+                const result = enrichResults[connector.slug];
+                const isLive = connector.enrichmentMode === 'live_lookup';
+
+                return (
+                  <div
+                    key={connector.slug}
+                    className="flex items-center justify-between p-2.5 rounded-lg"
+                    style={{ backgroundColor: 'var(--bg-elevated)' }}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                        {connector.name}
+                      </span>
+                      <span
+                        className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                        style={{
+                          backgroundColor: isLive ? 'rgba(16, 185, 129, 0.1)' : 'rgba(107, 114, 128, 0.1)',
+                          color: isLive ? '#10b981' : '#6b7280',
+                        }}
+                      >
+                        {isLive ? 'Live Check' : 'Local Records'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {result && (
+                        <span
+                          className="text-[10px] font-medium"
+                          style={{ color: result.found ? 'var(--success, #10b981)' : 'var(--text-tertiary)' }}
+                        >
+                          {result.error ? 'Error' : result.found ? `Found (${result.signalsAdded} signal${result.signalsAdded !== 1 ? 's' : ''})` : 'Not found'}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => handleEnrichCheck(connector.slug)}
+                        disabled={isChecking}
+                        className="ws-btn-ghost text-[10px] px-2 py-1 rounded flex items-center gap-1"
+                        title={`Check ${connector.name}`}
+                      >
+                        {isChecking ? <Loader2 size={10} className="animate-spin" /> : <Search size={10} />}
+                        Check
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Right Column - Score + Key Dates */}

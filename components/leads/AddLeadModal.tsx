@@ -172,6 +172,16 @@ export function AddLeadModal({ onClose, onLeadCreated }: AddLeadModalProps) {
   const [showConnectors, setShowConnectors] = useState(false);
   const [hasConnectors, setHasConnectors] = useState(false);
 
+  // Early dupe check (runs after address selection)
+  const [dupeWarning, setDupeWarning] = useState<{
+    source: 'pipeline' | 'discovery';
+    leadId?: string;
+    discoveredLeadId?: string;
+    address: string;
+    status?: string;
+  } | null>(null);
+  const [checkingDupe, setCheckingDupe] = useState(false);
+
   // Submission state
   const [saving, setSaving] = useState(false);
   const [enriching, setEnriching] = useState(false);
@@ -245,6 +255,34 @@ export function AddLeadModal({ onClose, onLeadCreated }: AddLeadModalProps) {
     setZipCode(s.zip);
     setShowSuggestions(false);
     setSuggestions([]);
+
+    // Run early dupe check
+    checkForDuplicate(s.street, s.city, s.state);
+  }
+
+  async function checkForDuplicate(addr: string, cty: string, st: string) {
+    if (!addr || !cty || !st) return;
+    setDupeWarning(null);
+    setCheckingDupe(true);
+    try {
+      const params = new URLSearchParams({ address: addr, city: cty, state: st });
+      const res = await fetch(`/api/leads/check-duplicate?${params}`);
+      const data = await res.json();
+      if (data.duplicate) {
+        setDupeWarning({
+          source: data.source,
+          leadId: data.leadId,
+          discoveredLeadId: data.discoveredLeadId,
+          address: data.address,
+          status: data.status,
+        });
+      }
+    } catch (err) {
+      // Silently fail — dupe check is best-effort
+      console.error('Dupe check error:', err);
+    } finally {
+      setCheckingDupe(false);
+    }
   }
 
   // ============================================================
@@ -484,8 +522,14 @@ export function AddLeadModal({ onClose, onLeadCreated }: AddLeadModalProps) {
                   <input
                     type="text"
                     value={address}
-                    onChange={(e) => setAddress(e.target.value)}
+                    onChange={(e) => { setAddress(e.target.value); setDupeWarning(null); }}
                     onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                    onBlur={() => {
+                      // Check for dupe on manual address blur (when user types instead of selecting suggestion)
+                      if (address.trim().length >= 5 && city.trim() && state.trim()) {
+                        checkForDuplicate(address.trim(), city.trim(), state.trim());
+                      }
+                    }}
                     placeholder="Start typing an address..."
                     className="ws-input text-sm w-full"
                     autoFocus
@@ -520,6 +564,49 @@ export function AddLeadModal({ onClose, onLeadCreated }: AddLeadModalProps) {
                   </div>
                 )}
               </div>
+
+              {/* Early dupe warning */}
+              {checkingDupe && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-tertiary)' }}>
+                  <Loader2 size={12} className="animate-spin" />
+                  Checking for duplicates...
+                </div>
+              )}
+
+              {dupeWarning && (
+                <div
+                  className="flex items-center justify-between px-3 py-2 rounded-lg text-sm"
+                  style={{ backgroundColor: 'var(--warning-bg, #fffbeb)', color: 'var(--warning, #d97706)' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle size={14} />
+                    <span>
+                      {dupeWarning.source === 'pipeline'
+                        ? dupeWarning.status === 'ARCHIVE'
+                          ? 'This address is archived in your pipeline.'
+                          : 'This address already exists in your pipeline.'
+                        : 'This address was found in Discovery.'}
+                    </span>
+                  </div>
+                  {dupeWarning.source === 'pipeline' && dupeWarning.leadId ? (
+                    <a
+                      href={`/leads/${dupeWarning.leadId}`}
+                      className="flex items-center gap-1 font-medium underline text-xs whitespace-nowrap"
+                      style={{ color: 'var(--brand-deep)' }}
+                    >
+                      View Lead <ExternalLink size={12} />
+                    </a>
+                  ) : dupeWarning.source === 'discovery' ? (
+                    <a
+                      href="/discovery"
+                      className="flex items-center gap-1 font-medium underline text-xs whitespace-nowrap"
+                      style={{ color: 'var(--brand-deep)' }}
+                    >
+                      View in Discovery <ExternalLink size={12} />
+                    </a>
+                  ) : null}
+                </div>
+              )}
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
