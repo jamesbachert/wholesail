@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
               signalType: 'no_rental_license',
               label: 'No Rental License',
               category: 'condition',
-              points: 4,
+              points: 0,
               value: 'No active rental license found in city records',
             },
             update: {
@@ -150,7 +150,11 @@ export async function POST(request: NextRequest) {
         const allSignals = await prisma.discoverySignal.findMany({
           where: { discoveredLeadId: lead.id },
         });
-        const distinctSlugs = new Set(allSignals.map((s) => s.connectorSlug));
+        // Only count connectors that contributed real (non-zero) signals toward sourceCount
+        // so informational-only lookups (e.g. "no rental license") don't inflate cross-source bonuses
+        const distinctSlugs = new Set(
+          allSignals.filter((s) => s.points > 0).map((s) => s.connectorSlug)
+        );
         const sourceCount = distinctSlugs.size;
         const discoveryScore = calculateDiscoveryScore(allSignals, sourceCount);
 

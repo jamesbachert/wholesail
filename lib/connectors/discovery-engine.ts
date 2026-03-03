@@ -177,7 +177,11 @@ export async function discoverRecords(
           where: { discoveredLeadId: leadId },
         });
 
-        const distinctSlugs = new Set(allSignals.map((s) => s.connectorSlug));
+        // Only count connectors that contributed real (non-zero) signals toward sourceCount
+        // so informational-only lookups (e.g. "no rental license") don't inflate cross-source bonuses
+        const distinctSlugs = new Set(
+          allSignals.filter((s) => s.points > 0).map((s) => s.connectorSlug)
+        );
         const sourceCount = distinctSlugs.size;
         const discoveryScore = calculateDiscoveryScore(allSignals, sourceCount);
 
