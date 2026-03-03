@@ -19,6 +19,7 @@ import {
   Layers,
   Zap,
   FileText,
+  Sparkles,
 } from 'lucide-react';
 import { useApi } from '@/lib/hooks';
 import { getScoreColorHex, getSignalTagColor, timeAgo } from '@/lib/mockData';
@@ -47,6 +48,7 @@ const CONNECTOR_LABELS: Record<string, string> = {
   'northampton-sheriff-sales': 'Sheriff Sales (Northampton)',
   'allentown-code-violations': 'Code Violations',
   'lehigh-tax-repository': 'Tax Repository',
+  'allentown-rental-licenses': 'Rental Licenses',
 };
 
 function getConnectorLabel(slug: string): string {
@@ -90,28 +92,12 @@ export default function DiscoveryPage() {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [syncing, setSyncing] = useState<string | null>(null); // slug of currently syncing connector
   const [syncResult, setSyncResult] = useState<any>(null);
+  const [enriching, setEnriching] = useState<string | null>(null);
+  const [enrichResult, setEnrichResult] = useState<any>(null);
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const [promoting, setPromoting] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const [actionResult, setActionResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-
-  // Auto-import toggle per connector (persisted in localStorage)
-  const [autoImport, setAutoImport] = useState<Record<string, boolean>>(() => {
-    if (typeof window === 'undefined') return {};
-    try {
-      const stored = localStorage.getItem('discovery-auto-import');
-      return stored ? JSON.parse(stored) : {};
-    } catch {
-      return {};
-    }
-  });
-
-  const toggleAutoImport = useCallback((slug: string) => {
-    setAutoImport((prev) => {
-      const updated = { ...prev, [slug]: !prev[slug] };
-      try { localStorage.setItem('discovery-auto-import', JSON.stringify(updated)); } catch {}
-      return updated;
-    });
-  }, []);
 
   // Build API URL for discovered leads
   const leadsUrl = useMemo(() => {
@@ -132,6 +118,8 @@ export default function DiscoveryPage() {
   const leads = leadsData?.leads || [];
   const total = leadsData?.total || 0;
   const sources = sourcesData?.sources || [];
+  const enrichmentSources = sourcesData?.enrichmentSources || [];
+  const allSources = [...sources, ...enrichmentSources];
   const availableSources = leadsData?.filterOptions?.sources || [];
 
   const toggleSort = (field: SortField) => {
@@ -170,31 +158,7 @@ export default function DiscoveryPage() {
         body: JSON.stringify({ connectorSlug: slug }),
       });
       const data = await res.json();
-
-      // Auto-import: promote all 'new' leads if toggle is on
-      let autoImportCount = 0;
-      if (autoImport[slug] && data.success && data.newCount > 0) {
-        try {
-          // Fetch newly created leads (status: 'new') from this source
-          const leadsRes = await fetch(`/api/discovery/leads?status=new&source=${slug}&limit=200`);
-          const leadsData = await leadsRes.json();
-          const newLeadIds = (leadsData.leads || []).map((l: any) => l.id);
-
-          if (newLeadIds.length > 0) {
-            const promoteRes = await fetch('/api/discovery/leads/promote', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ leadIds: newLeadIds }),
-            });
-            const promoteData = await promoteRes.json();
-            autoImportCount = promoteData.promoted || 0;
-          }
-        } catch (err) {
-          console.error('Auto-import error:', err);
-        }
-      }
-
-      setSyncResult({ ...data, autoImportCount });
+      setSyncResult(data);
       refetchLeads();
       refetchSources();
     } catch (err: any) {
@@ -202,7 +166,50 @@ export default function DiscoveryPage() {
     } finally {
       setSyncing(null);
     }
-  }, [refetchLeads, refetchSources, autoImport]);
+  }, [refetchLeads, refetchSources]);
+
+  // Enrich handler
+  const handleEnrich = useCallback(async (slug: string) => {
+    setEnriching(slug);
+    setEnrichResult(null);
+    try {
+      const res = await fetch('/api/discovery/enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectorSlug: slug }),
+      });
+      const data = await res.json();
+      setEnrichResult(data);
+      refetchLeads();
+      refetchSources();
+    } catch (err: any) {
+      setEnrichResult({ success: false, errorMessages: [err.message] });
+    } finally {
+      setEnriching(null);
+    }
+  }, [refetchLeads, refetchSources]);
+
+  // Sync All handler
+  const handleSyncAll = useCallback(async () => {
+    setSyncing('__all__');
+    setSyncResult(null);
+    try {
+      for (const source of sources) {
+        await fetch('/api/discovery/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ connectorSlug: source.slug }),
+        });
+      }
+      setSyncResult({ success: true, total: sources.length, message: `Synced ${sources.length} sources` });
+      refetchLeads();
+      refetchSources();
+    } catch (err: any) {
+      setSyncResult({ success: false, errorMessages: [err.message] });
+    } finally {
+      setSyncing(null);
+    }
+  }, [sources, refetchLeads, refetchSources]);
 
   // Promote handler
   const handlePromote = useCallback(async () => {
@@ -261,6 +268,24 @@ export default function DiscoveryPage() {
     sortField === 'sourceCount' ? 'sources' :
     sortField === 'lastSeenAt' ? 'last seen' : 'address';
 
+  // Compute source status for compact bar
+  const getSourceStatusColor = (source: any) => {
+    if (!source.lastSync) return 'var(--text-tertiary)'; // never synced — gray
+    if (source.lastSync.status === 'error') return 'var(--danger)'; // error — red
+    const completedAt = source.lastSync.completedAt || source.lastSync.startedAt;
+    if (!completedAt) return 'var(--text-tertiary)';
+    const hoursSince = (Date.now() - new Date(completedAt).getTime()) / (1000 * 60 * 60);
+    if (hoursSince < 24) return 'var(--success)'; // recent — green
+    return 'var(--warning)'; // stale — yellow
+  };
+
+  const mostRecentSync = allSources.reduce((latest: string | null, s: any) => {
+    const t = s.lastSync?.completedAt || s.lastSync?.startedAt;
+    if (!t) return latest;
+    if (!latest) return t;
+    return new Date(t) > new Date(latest) ? t : latest;
+  }, null);
+
   return (
     <div className="max-w-7xl mx-auto space-y-4 pb-20 md:pb-6">
       {/* Header */}
@@ -317,124 +342,221 @@ export default function DiscoveryPage() {
         </div>
       )}
 
-      {/* Data Sources Panel */}
-      <div className="ws-card p-4">
-        <div className="flex items-center gap-2 mb-3">
+      {/* Data Sources — Collapsible Panel */}
+      <div className="ws-card">
+        {/* Compact Status Bar (always visible) */}
+        <div
+          className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none"
+          onClick={() => setSourcesExpanded((v) => !v)}
+        >
           <Database size={16} style={{ color: 'var(--brand-deep)' }} />
-          <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Data Sources</span>
-          <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-            ({sources.length} connector{sources.length !== 1 ? 's' : ''})
+          <div className="flex items-center gap-1.5">
+            {allSources.map((s: any) => (
+              <span
+                key={s.slug}
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: getSourceStatusColor(s) }}
+                title={`${s.name}: ${s.lastSync?.status || 'never synced'}`}
+              />
+            ))}
+          </div>
+          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+            {allSources.length} source{allSources.length !== 1 ? 's' : ''}
+            {mostRecentSync && <> · Last synced {timeAgo(mostRecentSync)}</>}
           </span>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); handleSyncAll(); }}
+              disabled={syncing !== null}
+              className="ws-btn-secondary text-[11px] flex items-center gap-1 py-1 px-2.5"
+            >
+              {syncing === '__all__' ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+              Sync All
+            </button>
+            {sourcesExpanded
+              ? <ChevronUp size={16} style={{ color: 'var(--text-tertiary)' }} />
+              : <ChevronDown size={16} style={{ color: 'var(--text-tertiary)' }} />
+            }
+          </div>
         </div>
 
-        {sources.length === 0 && !sourcesData && (
-          <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading data sources...</div>
-        )}
+        {/* Expanded Panel */}
+        {sourcesExpanded && (
+          <div className="border-t px-4 pb-4" style={{ borderColor: 'var(--border-subtle)' }}>
+            {/* Lead Discovery Section */}
+            <div className="mt-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Database size={13} style={{ color: 'var(--text-tertiary)' }} />
+                <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                  Lead Discovery
+                </span>
+                <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                  — finds new properties
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {sources.map((source: any) => (
+                  <div
+                    key={source.slug}
+                    className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg"
+                    style={{ backgroundColor: 'var(--bg-elevated)' }}
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: getSourceStatusColor(source) }}
+                      />
+                      <span className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                        {source.name}
+                      </span>
+                      {source.lastSync?.status === 'success' && (
+                        <span className="ws-tag ws-tag-success text-[10px] shrink-0">Active</span>
+                      )}
+                      {source.lastSync?.status === 'error' && (
+                        <span className="ws-tag ws-tag-danger text-[10px] shrink-0">Error</span>
+                      )}
+                      {!source.lastSync && (
+                        <span className="ws-tag ws-tag-neutral text-[10px] shrink-0">Never Synced</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {source.lastSync && (
+                        <span className="text-[11px] hidden sm:inline" style={{ color: 'var(--text-tertiary)' }}>
+                          {timeAgo(source.lastSync.completedAt || source.lastSync.startedAt)} · {source.signalCount} signals
+                        </span>
+                      )}
+                      <button
+                        onClick={() => handleSync(source.slug)}
+                        disabled={syncing !== null}
+                        className="ws-btn-secondary text-[11px] flex items-center gap-1 py-1 px-2.5"
+                      >
+                        {syncing === source.slug ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                        {syncing === source.slug ? 'Syncing...' : 'Sync'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-        <div className="space-y-2">
-          {sources.map((source: any) => (
-            <div
-              key={source.slug}
-              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg"
-              style={{ backgroundColor: 'var(--bg-elevated)' }}
-            >
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{source.name}</span>
-                  {source.lastSync?.status === 'success' && (
-                    <span className="ws-tag ws-tag-success text-[10px]">Active</span>
-                  )}
-                  {source.lastSync?.status === 'error' && (
-                    <span className="ws-tag ws-tag-danger text-[10px]">Error</span>
-                  )}
-                  {!source.lastSync && (
-                    <span className="ws-tag ws-tag-neutral text-[10px]">Never Synced</span>
-                  )}
+            {/* Data Enrichment Section */}
+            {enrichmentSources.length > 0 && (
+              <div className="mt-4">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Sparkles size={13} style={{ color: 'var(--text-tertiary)' }} />
+                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                    Data Enrichment
+                  </span>
+                  <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                    — adds signals to existing leads
+                  </span>
                 </div>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                  {source.description}
-                </p>
-                {source.lastSync && (
-                  <div className="flex items-center gap-4 mt-1.5 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                    <span className="flex items-center gap-1">
-                      <Clock size={12} />
-                      Last sync: {timeAgo(source.lastSync.completedAt || source.lastSync.startedAt)}
+                <div className="space-y-1.5">
+                  {enrichmentSources.map((source: any) => (
+                    <div
+                      key={source.slug}
+                      className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg"
+                      style={{ backgroundColor: 'var(--bg-elevated)' }}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: getSourceStatusColor(source) }}
+                        />
+                        <span className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                          {source.name}
+                        </span>
+                        {source.lastSync?.status === 'success' && (
+                          <span className="ws-tag ws-tag-success text-[10px] shrink-0">
+                            {source.signalCount} enriched
+                          </span>
+                        )}
+                        {!source.lastSync && (
+                          <span className="ws-tag ws-tag-neutral text-[10px] shrink-0">Not Run</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        {source.lastSync && (
+                          <span className="text-[11px] hidden sm:inline" style={{ color: 'var(--text-tertiary)' }}>
+                            {timeAgo(source.lastSync.completedAt || source.lastSync.startedAt)}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => handleEnrich(source.slug)}
+                          disabled={enriching !== null || syncing !== null}
+                          className="ws-btn-secondary text-[11px] flex items-center gap-1 py-1 px-2.5"
+                        >
+                          {enriching === source.slug ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                          {enriching === source.slug ? 'Enriching...' : 'Enrich All'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Sync / Enrich result notifications */}
+            {syncResult && (
+              <div
+                className="mt-3 p-2.5 rounded-lg text-xs"
+                style={{
+                  backgroundColor: syncResult.success ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)',
+                  border: `1px solid ${syncResult.success ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`,
+                }}
+              >
+                <div className="flex items-center gap-2 font-medium" style={{ color: syncResult.success ? 'var(--success)' : 'var(--danger)' }}>
+                  {syncResult.success ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                  {syncResult.success ? 'Sync completed' : 'Sync failed'}
+                  {syncResult.success && syncResult.total != null && (
+                    <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>
+                      — {syncResult.message || `${syncResult.total} records (${syncResult.newCount} new, ${syncResult.updatedCount} updated) in ${(syncResult.duration / 1000).toFixed(1)}s`}
                     </span>
-                    <span>{source.signalCount} signals</span>
-                    {source.statusCounts && (
-                      <>
-                        <span style={{ color: 'var(--info)' }}>{source.statusCounts.new || 0} new</span>
-                        <span style={{ color: 'var(--success)' }}>{source.statusCounts.in_pipeline || 0} in pipeline</span>
-                      </>
-                    )}
+                  )}
+                  <button onClick={() => setSyncResult(null)} className="ml-auto opacity-60 hover:opacity-100">Dismiss</button>
+                </div>
+                {syncResult.errorMessages?.length > 0 && (
+                  <div className="mt-1.5" style={{ color: 'var(--danger)' }}>
+                    {syncResult.errorMessages.slice(0, 3).map((msg: string, i: number) => (
+                      <p key={i}>{msg}</p>
+                    ))}
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <label
-                  className="flex items-center gap-1.5 text-[10px] cursor-pointer select-none"
-                  style={{ color: autoImport[source.slug] ? 'var(--brand-deep)' : 'var(--text-tertiary)' }}
-                  title="Automatically import all new discoveries into your leads pipeline after sync"
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!autoImport[source.slug]}
-                    onChange={() => toggleAutoImport(source.slug)}
-                    className="rounded border-gray-300"
-                    style={{ accentColor: 'var(--brand-deep)' }}
-                  />
-                  Auto-Import
-                </label>
-                <button
-                  onClick={() => handleSync(source.slug)}
-                  disabled={syncing !== null}
-                  className="ws-btn-secondary text-xs flex items-center gap-1.5"
-                >
-                  {syncing === source.slug ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                  {syncing === source.slug ? 'Syncing...' : 'Sync Now'}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {sources.length === 0 && sourcesData && (
-          <div className="text-sm text-center py-4" style={{ color: 'var(--text-secondary)' }}>
-            No data source connectors configured for this region.
-          </div>
-        )}
-
-        {/* Sync result */}
-        {syncResult && (
-          <div
-            className="mt-3 p-3 rounded-lg text-xs"
-            style={{
-              backgroundColor: syncResult.success ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)',
-              border: `1px solid ${syncResult.success ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`,
-            }}
-          >
-            <div className="flex items-center gap-2 font-medium" style={{ color: syncResult.success ? 'var(--success)' : 'var(--danger)' }}>
-              {syncResult.success ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
-              {syncResult.success ? 'Sync completed' : 'Sync failed'}
-            </div>
-            {syncResult.success && (
-              <div className="mt-1.5 flex gap-4" style={{ color: 'var(--text-secondary)' }}>
-                <span>{syncResult.total} total records</span>
-                <span>{syncResult.newCount} new</span>
-                <span>{syncResult.updatedCount} updated</span>
-                <span>{(syncResult.duration / 1000).toFixed(1)}s</span>
-                {syncResult.autoImportCount > 0 && (
-                  <span style={{ color: 'var(--success)' }}>
-                    {syncResult.autoImportCount} auto-imported to pipeline
-                  </span>
+            )}
+            {enrichResult && (
+              <div
+                className="mt-3 p-2.5 rounded-lg text-xs"
+                style={{
+                  backgroundColor: enrichResult.success ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)',
+                  border: `1px solid ${enrichResult.success ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`,
+                }}
+              >
+                <div className="flex items-center gap-2 font-medium" style={{ color: enrichResult.success ? 'var(--success)' : 'var(--danger)' }}>
+                  {enrichResult.success ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                  {enrichResult.success ? 'Enrichment completed' : 'Enrichment failed'}
+                  {enrichResult.success && (
+                    <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>
+                      — {enrichResult.enrichedCount} leads enriched
+                      {enrichResult.skippedCount > 0 && `, ${enrichResult.skippedCount} already enriched`}
+                      {` in ${(enrichResult.duration / 1000).toFixed(1)}s`}
+                    </span>
+                  )}
+                  <button onClick={() => setEnrichResult(null)} className="ml-auto opacity-60 hover:opacity-100">Dismiss</button>
+                </div>
+                {enrichResult.errorMessages?.length > 0 && (
+                  <div className="mt-1.5" style={{ color: 'var(--danger)' }}>
+                    {enrichResult.errorMessages.slice(0, 3).map((msg: string, i: number) => (
+                      <p key={i}>{msg}</p>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
-            {syncResult.errorMessages?.length > 0 && (
-              <div className="mt-1.5" style={{ color: 'var(--danger)' }}>
-                {syncResult.errorMessages.slice(0, 3).map((msg: string, i: number) => (
-                  <p key={i}>{msg}</p>
-                ))}
+
+            {allSources.length === 0 && sourcesData && (
+              <div className="text-sm text-center py-4" style={{ color: 'var(--text-secondary)' }}>
+                No data source connectors configured for this region.
               </div>
             )}
           </div>

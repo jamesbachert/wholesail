@@ -162,6 +162,16 @@ export function parsedToDiscoveryRecords(
   }));
 }
 
+// -- Lookup connector access --
+
+export function getLookupConnector(slug: string): LookupConnector | undefined {
+  return lookupConnectors.find((c) => c.slug === slug);
+}
+
+export function getLookupConnectorsForRegion(regionSlug: string): LookupConnector[] {
+  return lookupConnectors.filter((c) => c.regionSlug === regionSlug);
+}
+
 // -- Info exports (for settings page, etc.) --
 
 export function getConnectorInfo() {
