@@ -22,6 +22,7 @@ import {
   getSignalTagColor,
   formatCurrency,
 } from '@/lib/mockData';
+import { StreetViewButton } from '@/components/leads/StreetViewModal';
 
 export default function DashboardPage() {
   const { data: liveLeadsData, loading: leadsLoading } = useApi<any>(
@@ -126,53 +127,63 @@ export default function DashboardPage() {
                   const l = normalizeLead(lead);
                   const signals = l.signals || [];
                   return (
-                    <Link
-                      key={l.id}
-                      href={`/leads/${l.id}`}
-                      className="flex items-center gap-4 px-5 py-3.5 ws-table-row"
-                    >
-                      <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
-                        style={{ backgroundColor: getScoreColorHex(l.totalScore) }}
+                    <div key={l.id} className="flex items-center gap-4 px-5 py-3.5 ws-table-row">
+                      <Link
+                        href={`/leads/${l.id}`}
+                        className="flex items-center gap-4 flex-1 min-w-0"
                       >
-                        {l.totalScore}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
-                            {l.property.address}
+                        <div
+                          className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
+                          style={{ backgroundColor: getScoreColorHex(l.totalScore) }}
+                        >
+                          {l.totalScore}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                              {l.property.address}
+                            </p>
+                            {l.isTimeSensitive && (
+                              <span className="ws-tag ws-tag-danger text-[10px]">
+                                <AlertTriangle size={10} /> Urgent
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }}>
+                            {l.property.city} · {l.property.ownerName || '—'} · {formatCurrency(l.property.estimatedValue)}
                           </p>
-                          {l.isTimeSensitive && (
-                            <span className="ws-tag ws-tag-danger text-[10px]">
-                              <AlertTriangle size={10} /> Urgent
+                        </div>
+                        <div className="hidden md:flex items-center gap-1.5 shrink-0">
+                          {signals.slice(0, 2).map((s: any, i: number) => (
+                            <span
+                              key={i}
+                              className={`ws-tag ws-tag-${getSignalTagColor(s.signalType)} text-[10px]`}
+                            >
+                              {s.label}
+                            </span>
+                          ))}
+                          {signals.length > 2 && (
+                            <span className="ws-tag ws-tag-neutral text-[10px]">
+                              +{signals.length - 2}
                             </span>
                           )}
                         </div>
-                        <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }}>
-                          {l.property.city} · {l.property.ownerName || '—'} · {formatCurrency(l.property.estimatedValue)}
-                        </p>
-                      </div>
-                      <div className="hidden md:flex items-center gap-1.5 shrink-0">
-                        {signals.slice(0, 2).map((s: any, i: number) => (
-                          <span
-                            key={i}
-                            className={`ws-tag ws-tag-${getSignalTagColor(s.signalType)} text-[10px]`}
-                          >
-                            {s.label}
+                        <div className="hidden sm:block shrink-0">
+                          <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                            {getStatusLabel(l.status)}
                           </span>
-                        ))}
-                        {signals.length > 2 && (
-                          <span className="ws-tag ws-tag-neutral text-[10px]">
-                            +{signals.length - 2}
-                          </span>
-                        )}
-                      </div>
-                      <div className="hidden sm:block shrink-0">
-                        <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
-                          {getStatusLabel(l.status)}
-                        </span>
-                      </div>
-                    </Link>
+                        </div>
+                      </Link>
+                      <StreetViewButton
+                        address={l.property.address}
+                        city={l.property.city}
+                        state={l.property.state}
+                        zipCode={l.property.zipCode}
+                        latitude={l.property.latitude}
+                        longitude={l.property.longitude}
+                        size={14}
+                      />
+                    </div>
                   );
                 })
               ) : (

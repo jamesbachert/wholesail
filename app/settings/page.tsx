@@ -22,15 +22,15 @@ import {
   Eye,
   EyeOff,
   Trash2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
-import { defaultScoringWeights } from '@/lib/mockData';
 import { useApi } from '@/lib/hooks';
 
 type SettingsTab = 'scoring' | 'regions' | 'sources' | 'notifications' | 'apikeys';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('scoring');
-  const [weights, setWeights] = useState(defaultScoringWeights);
 
   const tabs = [
     { id: 'scoring' as const, label: 'Scoring Weights', icon: Sliders },
@@ -77,7 +77,7 @@ export default function SettingsPage() {
         </div>
 
         <div className="flex-1 min-w-0">
-          {activeTab === 'scoring' && <ScoringSettings weights={weights} setWeights={setWeights} />}
+          {activeTab === 'scoring' && <ScoringSettings />}
           {activeTab === 'regions' && <RegionSettings />}
           {activeTab === 'sources' && <SourceSettings />}
           {activeTab === 'notifications' && <NotificationSettings />}
@@ -391,53 +391,364 @@ function MiniStat({ label, value, color }: { label: string; value: number; color
 }
 
 // ============================================================
-// SCORING SETTINGS (unchanged)
+// SCORING SETTINGS — matches SignalsTab categories & colors
 // ============================================================
 
-function ScoringSettings({ weights, setWeights }: { weights: typeof defaultScoringWeights; setWeights: (w: typeof defaultScoringWeights) => void }) {
-  const automatedWeights = weights.filter((w) => w.category === 'automated');
-  const manualWeights = weights.filter((w) => w.category === 'manual');
+// Same 4 categories + colors as SignalsTab
+const SCORING_CATEGORIES = [
+  {
+    key: 'distress',
+    label: 'Distress Signals',
+    icon: AlertCircle,
+    color: '#ef4444',
+    signals: [
+      { signalType: 'pre_foreclosure', label: 'Pre-Foreclosure / NOD',  defaultWeight: 45, description: 'Property is in pre-foreclosure or has received NOD' },
+      { signalType: 'probate',         label: 'Probate / Estate',        defaultWeight: 38, description: 'Owner deceased, property in probate' },
+      { signalType: 'tax_delinquent',  label: 'Tax Delinquent',          defaultWeight: 32, description: 'Property has delinquent taxes' },
+      { signalType: 'divorce',         label: 'Recent Divorce',          defaultWeight: 28, description: 'Owner has a recent divorce filing' },
+      { signalType: 'code_violation',  label: 'Code Violation',          defaultWeight: 22, description: 'Municipal code violations (stackable — each instance adds points)' },
+      { signalType: 'liens_judgments', label: 'Liens / Judgments',       defaultWeight: 18, description: 'Property has liens or judgments filed against it' },
+    ],
+  },
+  {
+    key: 'ownership',
+    label: 'Ownership',
+    icon: Globe,
+    color: '#3b82f6',
+    signals: [
+      { signalType: 'owner_deceased',     label: 'Owner Deceased',       defaultWeight: 35, description: 'Owner is deceased' },
+      { signalType: 'inherited',           label: 'Inherited',            defaultWeight: 25, description: 'Owner confirmed they inherited the property' },
+      { signalType: 'absentee_owner',      label: 'Absentee Owner',       defaultWeight: 22, description: 'Owner does not live at the property' },
+      { signalType: 'out_of_state_owner',  label: 'Out-of-State Owner',   defaultWeight: 15, description: 'Owner lives in a different state' },
+      { signalType: 'tired_landlord',      label: 'Tired Landlord',       defaultWeight: 18, description: 'Owner is a tired/overwhelmed landlord' },
+      { signalType: 'rental_property',     label: 'Rental Property',      defaultWeight: 8,  description: 'Property is a rental' },
+    ],
+  },
+  {
+    key: 'financial',
+    label: 'Financial',
+    icon: Sliders,
+    color: '#10b981',
+    signals: [
+      { signalType: 'bankruptcy',      label: 'Bankruptcy',            defaultWeight: 30, description: 'Owner has a bankruptcy filing' },
+      { signalType: 'high_equity',     label: 'High Equity (50%+)',    defaultWeight: 16, description: 'Estimated equity above 50% of value' },
+      { signalType: 'free_and_clear',  label: 'Owned Free & Clear',    defaultWeight: 12, description: 'Property has no mortgage' },
+      { signalType: 'job_loss',        label: 'Job Loss / Income Drop', defaultWeight: 20, description: 'Owner experienced job loss or income reduction' },
+    ],
+  },
+  {
+    key: 'condition',
+    label: 'Condition',
+    icon: AlertCircle,
+    color: '#6b7280',
+    signals: [
+      { signalType: 'vacant',               label: 'Vacant Property',       defaultWeight: 25, description: 'Property appears to be vacant' },
+      { signalType: 'fire_flood_damage',     label: 'Fire / Flood Damage',   defaultWeight: 20, description: 'Property suffered fire or flood damage' },
+      { signalType: 'deferred_maintenance',  label: 'Deferred Maintenance',  defaultWeight: 12, description: 'Significant deferred maintenance visible' },
+    ],
+  },
+];
 
-  const updateWeight = (signalType: string, newWeight: number) => {
-    setWeights(weights.map((w) => (w.signalType === signalType ? { ...w, weight: newWeight } : w)));
+// Signals from the old system not shown on the Signals tab
+const HIDDEN_SIGNALS = [
+  { signalType: 'expired_listing', label: 'Expired Listing',        defaultWeight: 8,  description: 'Property had an expired or withdrawn MLS listing' },
+  { signalType: 'long_ownership',  label: 'Long-Term Ownership',    defaultWeight: 5,  description: 'Owned for 15+ years' },
+  { signalType: 'low_saturation',  label: 'Low Zip Saturation',     defaultWeight: 6,  description: 'Zip code has low wholesaler competition' },
+];
+
+type WeightMap = Record<string, number>;
+
+function ScoringSettings() {
+  const [weights, setWeights] = useState<WeightMap>({});
+  const [savedWeights, setSavedWeights] = useState<WeightMap>({});
+  const [loadingWeights, setLoadingWeights] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
+
+  // Load weights from API on mount
+  useEffect(() => {
+    fetch('/api/scoring-weights')
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          const map: WeightMap = {};
+          for (const w of data) {
+            map[w.signalType] = w.weight;
+          }
+          setWeights(map);
+          setSavedWeights(map);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingWeights(false));
+  }, []);
+
+  const getWeight = (signalType: string, defaultWeight: number) =>
+    weights[signalType] ?? defaultWeight;
+
+  const updateWeight = (signalType: string, value: number) => {
+    setWeights((prev) => ({ ...prev, [signalType]: value }));
+    setSaveMessage(null);
+  };
+
+  const isDirty = JSON.stringify(weights) !== JSON.stringify(savedWeights);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveMessage(null);
+
+    const allSignals = [
+      ...SCORING_CATEGORIES.flatMap((c, ci) =>
+        c.signals.map((s, si) => ({
+          signalType: s.signalType,
+          label: s.label,
+          category: c.key,
+          weight: getWeight(s.signalType, s.defaultWeight),
+          description: s.description,
+          sortOrder: ci * 100 + si,
+        }))
+      ),
+      ...HIDDEN_SIGNALS.map((s, i) => ({
+        signalType: s.signalType,
+        label: s.label,
+        category: 'hidden',
+        weight: getWeight(s.signalType, s.defaultWeight),
+        description: s.description,
+        sortOrder: 900 + i,
+      })),
+    ];
+
+    try {
+      const res = await fetch('/api/scoring-weights', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ weights: allSignals }),
+      });
+
+      if (res.ok) {
+        setSavedWeights({ ...weights });
+        setSaveMessage({ type: 'success', text: 'Scoring weights saved. New scores apply to future signal changes.' });
+      } else {
+        const err = await res.json();
+        setSaveMessage({ type: 'error', text: err.error || 'Failed to save' });
+      }
+    } catch {
+      setSaveMessage({ type: 'error', text: 'Network error — could not save' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReset = () => {
+    const defaults: WeightMap = {};
+    for (const cat of SCORING_CATEGORIES) {
+      for (const s of cat.signals) {
+        defaults[s.signalType] = s.defaultWeight;
+      }
+    }
+    for (const s of HIDDEN_SIGNALS) {
+      defaults[s.signalType] = s.defaultWeight;
+    }
+    setWeights(defaults);
+    setSaveMessage(null);
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      {/* Header Card */}
       <div className="ws-card p-5">
         <div className="flex items-center justify-between mb-1">
-          <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Lead Scoring Weights</h3>
-          <button className="ws-btn-primary text-xs"><Check size={14} /> Save Changes</button>
+          <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+            Lead Scoring Weights
+          </h3>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleReset}
+              className="ws-btn-ghost text-xs"
+              title="Reset all weights to defaults"
+            >
+              <RefreshCw size={14} /> Defaults
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !isDirty}
+              className="ws-btn-primary text-xs"
+              style={{ opacity: saving || !isDirty ? 0.5 : 1 }}
+            >
+              {saving ? (
+                <><Loader2 size={14} className="animate-spin" /> Saving...</>
+              ) : (
+                <><Check size={14} /> Save Changes</>
+              )}
+            </button>
+          </div>
         </div>
-        <p className="text-xs mb-6" style={{ color: 'var(--text-secondary)' }}>
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
           Adjust the point value for each signal. Higher points = more impact on the lead&apos;s total score.
+          Changes apply when signals are next added or toggled.
         </p>
-        <div className="mb-6">
-          <h4 className="text-[10px] font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-tertiary)' }}>Automated Signals</h4>
-          <div className="space-y-3">{automatedWeights.map((w) => <WeightSlider key={w.signalType} weight={w} onChange={updateWeight} />)}</div>
-        </div>
-        <div>
-          <h4 className="text-[10px] font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-tertiary)' }}>Manual Signals</h4>
-          <div className="space-y-3">{manualWeights.map((w) => <WeightSlider key={w.signalType} weight={w} onChange={updateWeight} />)}</div>
-        </div>
+
+        {saveMessage && (
+          <div
+            className="flex items-center gap-2 mt-3 px-3 py-2 rounded-lg text-xs"
+            style={{
+              backgroundColor: saveMessage.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+              color: saveMessage.type === 'success' ? 'var(--success)' : 'var(--danger)',
+            }}
+          >
+            {saveMessage.type === 'success' ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+            {saveMessage.text}
+          </div>
+        )}
       </div>
+
+      {loadingWeights ? (
+        <div className="flex items-center justify-center py-8 gap-2" style={{ color: 'var(--text-secondary)' }}>
+          <Loader2 size={16} className="animate-spin" /> Loading scoring weights...
+        </div>
+      ) : (
+        <>
+          {/* Category Sections */}
+          {SCORING_CATEGORIES.map((category) => {
+            const Icon = category.icon;
+            return (
+              <div key={category.key} className="ws-card overflow-hidden">
+                {/* Category Header — same style as SignalsTab */}
+                <div
+                  className="flex items-center gap-2 px-5 py-3 border-b"
+                  style={{ borderColor: category.color, borderBottomWidth: '2px' }}
+                >
+                  <Icon size={16} style={{ color: category.color }} />
+                  <h4 className="text-xs font-bold uppercase tracking-widest" style={{ color: category.color }}>
+                    {category.label}
+                  </h4>
+                  <span className="text-[10px] ml-auto" style={{ color: 'var(--text-tertiary)' }}>
+                    {category.signals.length} signal{category.signals.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                <div className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
+                  {category.signals.map((signal) => (
+                    <WeightSlider
+                      key={signal.signalType}
+                      label={signal.label}
+                      description={signal.description}
+                      value={getWeight(signal.signalType, signal.defaultWeight)}
+                      categoryColor={category.color}
+                      onChange={(v) => updateWeight(signal.signalType, v)}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Hidden Signals — collapsible */}
+          {HIDDEN_SIGNALS.length > 0 && (
+            <div className="ws-card overflow-hidden">
+              <button
+                onClick={() => setShowHidden(!showHidden)}
+                className="flex items-center gap-2 px-5 py-3 w-full text-left border-b transition-colors hover:bg-[var(--bg-elevated)]"
+                style={{ borderColor: 'var(--border-primary)' }}
+              >
+                <EyeOff size={16} style={{ color: 'var(--text-tertiary)' }} />
+                <h4 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+                  Hidden Signals
+                </h4>
+                <span className="text-[10px] ml-auto mr-2" style={{ color: 'var(--text-tertiary)' }}>
+                  {HIDDEN_SIGNALS.length} signal{HIDDEN_SIGNALS.length !== 1 ? 's' : ''} · not shown on Signals tab
+                </span>
+                {showHidden ? (
+                  <ChevronUp size={14} style={{ color: 'var(--text-tertiary)' }} />
+                ) : (
+                  <ChevronDown size={14} style={{ color: 'var(--text-tertiary)' }} />
+                )}
+              </button>
+
+              {showHidden && (
+                <div className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
+                  {HIDDEN_SIGNALS.map((signal) => (
+                    <WeightSlider
+                      key={signal.signalType}
+                      label={signal.label}
+                      description={signal.description}
+                      value={getWeight(signal.signalType, signal.defaultWeight)}
+                      categoryColor="var(--text-tertiary)"
+                      onChange={(v) => updateWeight(signal.signalType, v)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Stacking Bonuses Info */}
+          <div className="ws-card p-5">
+            <h4 className="text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+              Stacking Bonuses
+            </h4>
+            <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+              Automatic bonus points when multiple signals combine — not individually configurable.
+            </p>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+                <div>
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Distress Stacking</p>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>2 active distress signals = +10 pts · 3+ = +20 pts</p>
+                </div>
+                <span className="text-sm font-bold" style={{ color: '#ef4444' }}>+10 / +20</span>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+                <div>
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Multi-Violation</p>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>2+ active code violation signals = +10 pts</p>
+                </div>
+                <span className="text-sm font-bold" style={{ color: '#ef4444' }}>+10</span>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-function WeightSlider({ weight, onChange }: { weight: (typeof defaultScoringWeights)[0]; onChange: (signalType: string, value: number) => void }) {
+function WeightSlider({
+  label,
+  description,
+  value,
+  categoryColor,
+  onChange,
+}: {
+  label: string;
+  description?: string;
+  value: number;
+  categoryColor: string;
+  onChange: (value: number) => void;
+}) {
   return (
-    <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+    <div className="px-5 py-3">
       <div className="flex items-center justify-between mb-1.5">
         <div>
-          <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{weight.label}</span>
-          {weight.description && <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{weight.description}</p>}
+          <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{label}</span>
+          {description && <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{description}</p>}
         </div>
-        <span className="text-sm font-bold min-w-[40px] text-right" style={{ color: 'var(--brand-deep)' }}>{weight.weight} pts</span>
+        <span className="text-sm font-bold min-w-[50px] text-right" style={{ color: categoryColor }}>
+          {value} pts
+        </span>
       </div>
-      <input type="range" min={0} max={30} step={1} value={weight.weight} onChange={(e) => onChange(weight.signalType, parseInt(e.target.value))}
+      <input
+        type="range"
+        min={0}
+        max={50}
+        step={1}
+        value={value}
+        onChange={(e) => onChange(parseInt(e.target.value))}
         className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
-        style={{ background: `linear-gradient(to right, var(--brand-deep) 0%, var(--brand-deep) ${(weight.weight / 30) * 100}%, var(--border-primary) ${(weight.weight / 30) * 100}%, var(--border-primary) 100%)` }}
+        style={{
+          background: `linear-gradient(to right, ${categoryColor} 0%, ${categoryColor} ${(value / 50) * 100}%, var(--border-primary) ${(value / 50) * 100}%, var(--border-primary) 100%)`,
+        }}
       />
     </div>
   );
