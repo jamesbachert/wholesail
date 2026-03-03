@@ -12,6 +12,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { AddLeadModal } from '@/components/leads/AddLeadModal';
+import { StreetViewButton } from '@/components/leads/StreetViewModal';
 import { useApi } from '@/lib/hooks';
 import {
   getScoreColorHex,
@@ -205,7 +206,7 @@ export default function LeadsPage() {
         <div className="ws-card overflow-hidden">
           {/* Table Header */}
           <div
-            className="hidden md:grid grid-cols-[40px_48px_1fr_140px_120px_100px_100px] gap-3 px-5 py-3 text-xs font-semibold border-b"
+            className="hidden md:grid grid-cols-[40px_48px_1fr_28px_140px_120px_100px_100px] gap-3 px-5 py-3 text-xs font-semibold border-b"
             style={{ color: 'var(--text-tertiary)', borderColor: 'var(--border-primary)', backgroundColor: 'var(--bg-elevated)' }}
           >
             <div className="flex items-center">
@@ -215,6 +216,7 @@ export default function LeadsPage() {
               Score <ArrowUpDown size={12} />
             </button>
             <div>Property / Owner</div>
+            <div></div>
             <div>Signals</div>
             <button onClick={() => toggleSort('estimatedValue')} className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors">
               Value <ArrowUpDown size={12} />
@@ -235,7 +237,7 @@ export default function LeadsPage() {
               return (
                 <div key={lead.id} className="ws-table-row">
                   {/* Desktop Row */}
-                  <div className="hidden md:grid grid-cols-[40px_48px_1fr_140px_120px_100px_100px] gap-3 px-5 py-3.5 items-center">
+                  <div className="hidden md:grid grid-cols-[40px_48px_1fr_28px_140px_120px_100px_100px] gap-3 px-5 py-3.5 items-center">
                     <div>
                       <input type="checkbox" checked={selectedLeads.has(lead.id)} onChange={() => toggleSelect(lead.id)} className="rounded" />
                     </div>
@@ -253,6 +255,17 @@ export default function LeadsPage() {
                         {prop.city}, {prop.state} {prop.zipCode} · {prop.ownerName || '—'}
                       </p>
                     </Link>
+                    <div>
+                      <StreetViewButton
+                        address={prop.address}
+                        city={prop.city}
+                        state={prop.state}
+                        zipCode={prop.zipCode}
+                        latitude={prop.latitude}
+                        longitude={prop.longitude}
+                        size={14}
+                      />
+                    </div>
                     <div className="flex flex-wrap gap-1">
                       {signals.slice(0, 2).map((s: any, i: number) => (
                         <span key={i} className={`ws-tag ws-tag-${getSignalTagColor(s.signalType)} text-[10px]`}>{s.label}</span>

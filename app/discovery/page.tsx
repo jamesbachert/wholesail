@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useApi } from '@/lib/hooks';
 import { getScoreColorHex, getSignalTagColor, timeAgo } from '@/lib/mockData';
+import { StreetViewButton } from '@/components/leads/StreetViewModal';
 
 // -- PA Urban Redevelopment Law (Act 385) blight criteria descriptions --
 const BLIGHT_CRITERIA: Record<string, string> = {
@@ -645,7 +646,7 @@ export default function DiscoveryPage() {
         <div className="ws-card overflow-hidden">
           {/* Table Header */}
           <div
-            className="hidden md:grid grid-cols-[40px_48px_1fr_80px_180px_100px_90px] gap-3 px-5 py-3 text-xs font-semibold border-b"
+            className="hidden md:grid grid-cols-[40px_48px_1fr_28px_80px_180px_100px_90px] gap-3 px-5 py-3 text-xs font-semibold border-b"
             style={{ color: 'var(--text-tertiary)', borderColor: 'var(--border-primary)', backgroundColor: 'var(--bg-elevated)' }}
           >
             <div className="flex items-center">
@@ -657,6 +658,7 @@ export default function DiscoveryPage() {
             <button onClick={() => toggleSort('address')} className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors text-left">
               Address <ArrowUpDown size={12} />
             </button>
+            <div></div>
             <button onClick={() => toggleSort('sourceCount')} className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors">
               Sources <ArrowUpDown size={12} />
             </button>
@@ -678,7 +680,7 @@ export default function DiscoveryPage() {
                 <div key={lead.id} className="ws-table-row">
                   {/* Desktop Row */}
                   <div
-                    className="hidden md:grid grid-cols-[40px_48px_1fr_80px_180px_100px_90px] gap-3 px-5 py-3.5 items-center cursor-pointer"
+                    className="hidden md:grid grid-cols-[40px_48px_1fr_28px_80px_180px_100px_90px] gap-3 px-5 py-3.5 items-center cursor-pointer"
                     onClick={() => setExpandedRow(isExpanded ? null : lead.id)}
                   >
                     <div onClick={(e) => e.stopPropagation()}>
@@ -701,6 +703,15 @@ export default function DiscoveryPage() {
                         {lead.city}, {lead.state} {lead.zipCode}
                         {lead.propertyType ? ` · ${lead.propertyType}` : ''}
                       </p>
+                    </div>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <StreetViewButton
+                        address={lead.address}
+                        city={lead.city}
+                        state={lead.state}
+                        zipCode={lead.zipCode}
+                        size={14}
+                      />
                     </div>
                     <div>
                       <div className="flex items-center gap-1">

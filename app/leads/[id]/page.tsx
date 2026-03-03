@@ -40,6 +40,7 @@ import {
 } from '@/lib/mockData';
 import { SignalsTab } from '@/components/leads/SignalsTab';
 import { CallDialog } from '@/components/leads/CallDialog';
+import { StreetViewButton } from '@/components/leads/StreetViewModal';
 
 export default function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -445,9 +446,20 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
         {/* Property Details */}
         <div className="ws-card p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-              <Home size={16} style={{ color: 'var(--brand-deep)' }} /> Property Details
-            </h3>
+            <div className="flex items-center gap-1">
+              <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                <Home size={16} style={{ color: 'var(--brand-deep)' }} /> Property Details
+              </h3>
+              <StreetViewButton
+                address={property.address}
+                city={property.city}
+                state={property.state}
+                zipCode={property.zipCode}
+                latitude={property.latitude}
+                longitude={property.longitude}
+                size={16}
+              />
+            </div>
             {!editingProperty ? (
               <button
                 onClick={() => setEditingProperty(true)}
