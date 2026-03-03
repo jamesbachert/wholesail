@@ -32,9 +32,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Filter by source (connector slug) via signals relation
+    // Exclude 0-point informational signals (e.g. "no rental license") so filtering
+    // by a source only shows leads with real findings from that connector
     if (source) {
       where.signals = {
-        some: { connectorSlug: source },
+        some: { connectorSlug: source, points: { gt: 0 } },
       };
     }
 
@@ -70,9 +72,11 @@ export async function GET(request: NextRequest) {
     ]);
 
     // Get distinct connector slugs for source filter dropdown
+    // Only include connectors that have real (non-zero) signals
     const distinctSources = await prisma.discoverySignal.findMany({
       where: {
         discoveredLead: { sourceRegion: region },
+        points: { gt: 0 },
       },
       select: { connectorSlug: true },
       distinct: ['connectorSlug'],
