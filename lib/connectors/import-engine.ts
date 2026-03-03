@@ -1,5 +1,7 @@
 import { prisma } from '../prisma';
 import { ConnectorResult, ParsedRecord } from './types';
+import { recalculateScore } from './scoring';
+import { normalizeAddress } from './address-utils';
 
 // Signal types that allow multiple instances per lead (dedup by value, not type)
 const STACKABLE_SIGNAL_TYPES = ['code_violation'];
@@ -311,66 +313,7 @@ export async function importRecords(
   };
 }
 
-// ============================================================
-// SCORE CALCULATION WITH DISTRESS STACKING BONUSES
-// ============================================================
-
-async function recalculateScore(leadId: string) {
-  const signals = await prisma.leadSignal.findMany({
-    where: { leadId, isActive: true },
-  });
-
-  let automatedScore = 0;
-  let manualScore = 0;
-  let distressCount = 0;
-  let codeViolationCount = 0;
-
-  for (const signal of signals) {
-    if (signal.isAutomated || signal.category === 'distress') {
-      automatedScore += signal.points;
-    } else {
-      manualScore += signal.points;
-    }
-
-    // Count active distress signals for stacking bonus
-    if (signal.category === 'distress') {
-      distressCount++;
-    }
-
-    // Count code violations for their own stacking bonus
-    if (signal.signalType === 'code_violation') {
-      codeViolationCount++;
-    }
-  }
-
-  // Distress stacking bonuses
-  let stackingBonus = 0;
-  if (distressCount >= 3) {
-    stackingBonus = 20;
-  } else if (distressCount >= 2) {
-    stackingBonus = 10;
-  }
-
-  // Code violation stacking bonus: +10 for 2+ violations
-  let codeViolationBonus = 0;
-  if (codeViolationCount >= 2) {
-    codeViolationBonus = 10;
-  }
-
-  const totalScore = automatedScore + manualScore + stackingBonus + codeViolationBonus;
-
-  // Determine priority tier
-  let priority = 'normal';
-  if (totalScore >= 100) priority = 'urgent';
-  else if (totalScore >= 70) priority = 'high';
-  else if (totalScore >= 40) priority = 'normal';
-  else priority = 'low';
-
-  await prisma.lead.update({
-    where: { id: leadId },
-    data: { automatedScore, manualScore, totalScore, priority },
-  });
-}
+// recalculateScore is imported from ./scoring
 
 // ============================================================
 // PROPERTY FLAG SYNC
@@ -378,7 +321,7 @@ async function recalculateScore(leadId: string) {
 // Called after each lead's signals are imported.
 // ============================================================
 
-async function syncPropertyFlags(
+export async function syncPropertyFlags(
   propertyId: string,
   signals: Array<{ signalType: string }>
 ) {
@@ -386,6 +329,7 @@ async function syncPropertyFlags(
     code_violation: 'hasCodeViolations',
     vacant_property: 'isVacant',
     absentee_owner: 'isAbsenteeOwner',
+    rental_property: 'isRentalProperty',
   };
 
   const updates: Record<string, boolean> = {};
@@ -405,26 +349,4 @@ async function syncPropertyFlags(
   }
 }
 
-// ============================================================
-// HELPERS
-// ============================================================
-
-function normalizeAddress(address: string): string {
-  return address
-    .toUpperCase()
-    .replace(/\./g, '')
-    .replace(/\bSTREET\b/g, 'ST')
-    .replace(/\bAVENUE\b/g, 'AVE')
-    .replace(/\bROAD\b/g, 'RD')
-    .replace(/\bDRIVE\b/g, 'DR')
-    .replace(/\bCOURT\b/g, 'CT')
-    .replace(/\bLANE\b/g, 'LN')
-    .replace(/\bBOULEVARD\b/g, 'BLVD')
-    .replace(/\bCIRCLE\b/g, 'CIR')
-    .replace(/\bNORTH\b/g, 'N')
-    .replace(/\bSOUTH\b/g, 'S')
-    .replace(/\bEAST\b/g, 'E')
-    .replace(/\bWEST\b/g, 'W')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+// normalizeAddress is imported from ./address-utils

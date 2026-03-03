@@ -1,5 +1,152 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { normalizeAddress } from '@/lib/connectors/address-utils';
+import { recalculateScore } from '@/lib/connectors/scoring';
+
+// POST /api/leads — create a new lead manually
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { address, city, state, zipCode, county, ownerName, ownerPhone, ownerEmail,
+            propertyType, bedrooms, bathrooms, sqft, yearBuilt, signals } = body;
+
+    // Validate required fields
+    if (!address || !city || !state || !zipCode) {
+      return NextResponse.json(
+        { error: 'Address, city, state, and zip code are required' },
+        { status: 400 }
+      );
+    }
+
+    // Normalize address for dedup
+    const normalizedAddr = normalizeAddress(address);
+
+    // Check for duplicate property
+    const existingProperty = await prisma.property.findFirst({
+      where: {
+        AND: [
+          { city: { equals: city, mode: 'insensitive' } },
+          { state },
+        ],
+        OR: [
+          { address: { equals: address, mode: 'insensitive' } },
+          { address: { equals: normalizedAddr, mode: 'insensitive' } },
+        ],
+      },
+      include: { lead: true },
+    });
+
+    if (existingProperty?.lead) {
+      return NextResponse.json(
+        {
+          duplicate: true,
+          leadId: existingProperty.lead.id,
+          address: existingProperty.address,
+          city: existingProperty.city,
+        },
+        { status: 409 }
+      );
+    }
+
+    // Auto-assign region by zip code
+    const region = await prisma.region.findFirst({
+      where: { zipCodes: { has: zipCode }, isActive: true },
+    });
+
+    if (!region) {
+      return NextResponse.json(
+        { error: `Zip code ${zipCode} is not in a supported region yet` },
+        { status: 400 }
+      );
+    }
+
+    // Build property data
+    const propertyData: any = {
+      address,
+      city,
+      state,
+      zipCode,
+    };
+    if (county) propertyData.county = county;
+    if (ownerName) propertyData.ownerName = ownerName;
+    if (ownerPhone) propertyData.ownerPhone = ownerPhone;
+    if (ownerEmail) propertyData.ownerEmail = ownerEmail;
+    if (propertyType) propertyData.propertyType = propertyType;
+    if (bedrooms) propertyData.bedrooms = parseInt(bedrooms);
+    if (bathrooms) propertyData.bathrooms = parseInt(bathrooms);
+    if (sqft) propertyData.sqft = parseInt(sqft);
+    if (yearBuilt) propertyData.yearBuilt = parseInt(yearBuilt);
+
+    // Create property (or reuse existing one without a lead)
+    const property = existingProperty || await prisma.property.create({ data: propertyData });
+
+    // Create lead
+    const lead = await prisma.lead.create({
+      data: {
+        propertyId: property.id,
+        regionId: region.id,
+        status: 'NEW',
+      },
+    });
+
+    // Add any manually-selected signals
+    if (signals && Array.isArray(signals) && signals.length > 0) {
+      // Get scoring weights for proper point values
+      const weights = await prisma.scoringWeight.findMany({ where: { isActive: true } });
+      const weightMap = new Map(weights.map((w) => [w.signalType, w]));
+
+      // Fallback labels/weights for signal types not yet in the ScoringWeight table
+      const FALLBACK: Record<string, { label: string; weight: number; category: string }> = {
+        pre_foreclosure:     { label: 'Pre-Foreclosure',        weight: 20, category: 'distress' },
+        probate:             { label: 'Probate / Estate',        weight: 20, category: 'distress' },
+        tax_delinquent:      { label: 'Tax Delinquent',          weight: 18, category: 'distress' },
+        divorce:             { label: 'Divorce',                 weight: 16, category: 'distress' },
+        code_violation:      { label: 'Code Violation',          weight: 10, category: 'distress' },
+        liens_judgments:     { label: 'Liens / Judgments',       weight: 14, category: 'distress' },
+        owner_deceased:      { label: 'Owner Deceased',          weight: 18, category: 'ownership' },
+        inherited:           { label: 'Inherited',               weight: 18, category: 'ownership' },
+        absentee_owner:      { label: 'Absentee Owner',          weight: 8,  category: 'ownership' },
+        out_of_state_owner:  { label: 'Out-of-State Owner',      weight: 8,  category: 'ownership' },
+        tired_landlord:      { label: 'Tired Landlord',          weight: 10, category: 'ownership' },
+        rental_property:     { label: 'Rental Property',         weight: 8,  category: 'ownership' },
+        bankruptcy:          { label: 'Bankruptcy',              weight: 16, category: 'financial' },
+        high_equity:         { label: 'High Equity (50%+)',      weight: 12, category: 'financial' },
+        free_and_clear:      { label: 'Owned Free & Clear',      weight: 10, category: 'financial' },
+        job_loss:            { label: 'Job Loss / Income Drop',  weight: 12, category: 'financial' },
+        vacant:              { label: 'Vacant Property',         weight: 10, category: 'condition' },
+        fire_flood_damage:   { label: 'Fire / Flood Damage',     weight: 14, category: 'condition' },
+        deferred_maintenance:{ label: 'Deferred Maintenance',    weight: 8,  category: 'condition' },
+      };
+
+      for (const signalType of signals) {
+        const weight = weightMap.get(signalType);
+        const fallback = FALLBACK[signalType];
+        if (!weight && !fallback) continue; // Unknown signal type
+
+        await prisma.leadSignal.create({
+          data: {
+            leadId: lead.id,
+            signalType,
+            label: weight?.label ?? fallback?.label ?? signalType,
+            category: weight?.category ?? fallback?.category ?? 'manual',
+            points: weight?.weight ?? fallback?.weight ?? 10,
+            source: 'Manual entry',
+            isAutomated: false,
+            isLocked: false,
+            isActive: true,
+          },
+        });
+      }
+
+      await recalculateScore(lead.id);
+    }
+
+    return NextResponse.json({ lead: { id: lead.id, propertyId: property.id } }, { status: 201 });
+  } catch (error: any) {
+    console.error('Create lead error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
 
 // GET /api/leads — list leads with advanced filtering
 export async function GET(request: NextRequest) {
@@ -166,9 +313,17 @@ export async function GET(request: NextRequest) {
   select: { city: true, zipCode: true },
 });
 
-const availableCities = [...new Set(filterOptions.map((p) => p.city))]
-  .filter(Boolean)
-  .sort();
+// Dedupe cities case-insensitively: normalize to title case, trim whitespace
+const citySet = new Map<string, string>();
+for (const p of filterOptions) {
+  if (!p.city) continue;
+  const key = p.city.trim().toLowerCase();
+  if (!citySet.has(key)) {
+    // Store the title-cased version
+    citySet.set(key, key.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
+  }
+}
+const availableCities = [...citySet.values()].sort();
 const availableZipCodes = [...new Set(filterOptions.map((p) => p.zipCode))]
   .filter(Boolean)
   .sort();

@@ -61,6 +61,7 @@ const SIGNAL_DETAIL_CONFIG: Record<string, { detailType: InlineDetailType; dateP
   tax_delinquent:      { detailType: 'date_and_text', datePlaceholder: 'Delinquency date', textPlaceholder: 'Amount owed, years...' },
   divorce:             { detailType: 'date',          datePlaceholder: 'Filing date' },
   code_violation:      { detailType: 'text',          textPlaceholder: 'Violation type, case #, details...' },
+  rental_property:     { detailType: 'text',          textPlaceholder: 'License #, expiration, # of units...' },
   liens_judgments:     { detailType: 'date_and_text', datePlaceholder: 'Filing date', textPlaceholder: 'Lien type, amount, holder...' },
   owner_deceased:      { detailType: 'date',          datePlaceholder: 'Date of death' },
   inherited:           { detailType: 'text',          textPlaceholder: 'Heir name, relationship...' },
@@ -81,6 +82,7 @@ const PROPERTY_SYNC_FIELDS: Record<string, string> = {
   vacant: 'isVacant',
   absentee_owner: 'isAbsenteeOwner',
   code_violation: 'hasCodeViolations',
+  rental_property: 'isRentalProperty',
 };
 
 // ============================================================
@@ -100,7 +102,7 @@ const CATEGORIES = [
     label: 'Ownership',
     icon: Home,
     color: '#3b82f6',
-    signals: ['owner_deceased', 'inherited', 'absentee_owner', 'out_of_state_owner', 'tired_landlord'],
+    signals: ['owner_deceased', 'inherited', 'absentee_owner', 'out_of_state_owner', 'tired_landlord', 'rental_property'],
   },
   {
     key: 'financial',
@@ -131,6 +133,7 @@ const FALLBACK_WEIGHTS: Record<string, { label: string; weight: number; category
   absentee_owner:      { label: 'Absentee Owner',            weight: 22, category: 'ownership' },
   out_of_state_owner:  { label: 'Out-of-State Owner',        weight: 15, category: 'ownership' },
   tired_landlord:      { label: 'Tired Landlord',            weight: 18, category: 'ownership' },
+  rental_property:     { label: 'Rental Property',           weight: 8,  category: 'ownership' },
   bankruptcy:          { label: 'Bankruptcy',                weight: 30, category: 'financial' },
   high_equity:         { label: 'High Equity (50%+)',        weight: 16, category: 'financial' },
   free_and_clear:      { label: 'Owned Free & Clear',        weight: 12, category: 'financial' },
@@ -169,10 +172,21 @@ export function SignalsTab({ leadId, signals: initialSignals, totalScore: initia
       .catch(() => {});
   }, []);
 
-  // Signal lookup
+  // Signal lookup — single map (last wins) for non-stackable signals
   const signalMap = new Map<string, Signal>();
   for (const s of localSignals) {
     signalMap.set(s.signalType, s);
+  }
+
+  // Multi-signal map for stackable types (code_violation can have multiple instances)
+  const STACKABLE_TYPES = new Set(['code_violation']);
+  const signalMultiMap = new Map<string, Signal[]>();
+  for (const s of localSignals) {
+    if (STACKABLE_TYPES.has(s.signalType)) {
+      const existing = signalMultiMap.get(s.signalType) || [];
+      existing.push(s);
+      signalMultiMap.set(s.signalType, existing);
+    }
   }
 
   // Optimistic score recalc
@@ -476,6 +490,9 @@ export function SignalsTab({ leadId, signals: initialSignals, totalScore: initia
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-0.5">
               {category.signals.map((signalType) => {
                 const existing = signalMap.get(signalType);
+                const allInstances = signalMultiMap.get(signalType) || [];
+                const activeInstances = allInstances.filter((s) => s.isActive);
+                const isStackable = STACKABLE_TYPES.has(signalType);
                 const isActive = existing?.isActive ?? false;
                 const isAutomated = existing?.isAutomated ?? false;
                 const isLocked = existing?.isLocked ?? false;
@@ -518,12 +535,20 @@ export function SignalsTab({ leadId, signals: initialSignals, totalScore: initia
                         )}
                       </button>
 
-                      {/* Label */}
+                      {/* Label + stackable count badge */}
                       <span
-                        className="text-sm font-medium flex-1 select-none"
+                        className="text-sm font-medium flex-1 select-none flex items-center gap-1.5"
                         style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)' }}
                       >
                         {label}
+                        {isStackable && activeInstances.length > 1 && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded-full font-bold text-white"
+                            style={{ backgroundColor: category.color }}
+                          >
+                            {activeInstances.length}
+                          </span>
+                        )}
                       </span>
 
                       {/* Expand details arrow */}
@@ -565,8 +590,28 @@ export function SignalsTab({ leadId, signals: initialSignals, totalScore: initia
                       )}
                     </div>
 
-                    {/* Compact existing details */}
-                    {isActive && existing && (existing.value || existing.eventDate) && !isDetailExpanded && (
+                    {/* Compact existing details — stackable signals show all instances */}
+                    {isActive && !isDetailExpanded && isStackable && activeInstances.length > 0 && (
+                      <div
+                        className="ml-8 mr-3 mb-0.5 space-y-0.5 cursor-pointer"
+                        onClick={() => toggleDetailExpanded(signalType)}
+                      >
+                        {activeInstances.map((inst, idx) => (
+                          <div
+                            key={inst.id}
+                            className="px-2.5 py-1 rounded text-[11px] truncate"
+                            style={{ color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-elevated)' }}
+                          >
+                            {inst.eventDate && <span>{new Date(inst.eventDate).toLocaleDateString()}</span>}
+                            {inst.eventDate && inst.value && <span> · </span>}
+                            {inst.value && <span>{inst.value}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Compact existing details — non-stackable signals show single instance */}
+                    {isActive && !isDetailExpanded && !isStackable && existing && (existing.value || existing.eventDate) && (
                       <div
                         className="ml-8 mr-3 mb-0.5 px-2.5 py-1 rounded text-[11px] truncate cursor-pointer"
                         style={{ color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-elevated)' }}

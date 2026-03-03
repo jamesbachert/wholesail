@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnector } from '@/lib/connectors';
 import { importRecords } from '@/lib/connectors/import-engine';
+import { NorthamptonSheriffSalesConnector } from '@/lib/connectors/pa/lehigh-valley/northampton-sheriff-sales';
+import { getLookupConnector } from '@/lib/connectors/lookup-registry';
+import { bulkCheckRentalLicenses } from '@/lib/connectors/rental-lookup-engine';
 
 // Secret key to prevent unauthorized triggers
 const CONNECTOR_SECRET = process.env.CONNECTOR_SECRET || 'wholesail-run-2026';
@@ -21,7 +24,18 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get the connector
+    // Check if this is a lookup connector (e.g. rental license check)
+    const lookupConnector = getLookupConnector(slug);
+    if (lookupConnector) {
+      console.log(`[Lookup Connector] Running bulk check: ${lookupConnector.name}`);
+      const result = await bulkCheckRentalLicenses();
+      return NextResponse.json({
+        connector: lookupConnector.name,
+        ...result,
+      });
+    }
+
+    // Get the import connector
     const connector = getConnector(slug);
     if (!connector) {
       return NextResponse.json(
@@ -48,7 +62,7 @@ export async function POST(
       records = connector.parseManualInput(body.data);
     } else {
       // Auto-fetch mode
-      records = await connector.fetch();
+      records = await connector.fetchAndParse();
     }
 
     console.log(`[Connector] Parsed ${records.length} records from ${connector.name}`);

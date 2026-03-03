@@ -9,7 +9,9 @@ import {
   Download,
   Send,
   Loader2,
+  Plus,
 } from 'lucide-react';
+import { AddLeadModal } from '@/components/leads/AddLeadModal';
 import { useApi } from '@/lib/hooks';
 import {
   getScoreColorHex,
@@ -34,6 +36,7 @@ export default function LeadsPage() {
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
   const [advancedFilters, setAdvancedFilters] = useState<Filters>(emptyFilters);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({ cities: [], zipCodes: [] });
+  const [showAddLead, setShowAddLead] = useState(false);
 
   // Build API URL with all filters
   const apiUrl = useMemo(() => {
@@ -64,7 +67,7 @@ export default function LeadsPage() {
     return `/api/leads?${params.toString()}`;
   }, [sortField, sortDir, statusFilter, searchQuery, advancedFilters]);
 
-  const { data: liveData, loading } = useApi<any>(apiUrl);
+  const { data: liveData, loading, refetch } = useApi<any>(apiUrl);
 
   // Update filter options from API response
   useEffect(() => {
@@ -129,13 +132,22 @@ export default function LeadsPage() {
             {loading ? 'Loading...' : `${totalCount} leads`} · sorted by {sortLabel}
           </p>
         </div>
-        {selectedLeads.size > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>{selectedLeads.size} selected</span>
-            <button className="ws-btn-primary text-xs"><Send size={14} /> Hand Off</button>
-            <button className="ws-btn-secondary text-xs"><Download size={14} /> Export</button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {selectedLeads.size > 0 && (
+            <>
+              <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>{selectedLeads.size} selected</span>
+              <button className="ws-btn-primary text-xs"><Send size={14} /> Hand Off</button>
+              <button className="ws-btn-secondary text-xs"><Download size={14} /> Export</button>
+            </>
+          )}
+          <button
+            onClick={() => setShowAddLead(true)}
+            className="ws-btn-primary text-xs flex items-center gap-1.5"
+          >
+            <Plus size={14} />
+            Add Lead
+          </button>
+        </div>
       </div>
 
       {/* Search + Status Filters */}
@@ -297,6 +309,13 @@ export default function LeadsPage() {
             </div>
           )}
         </div>
+      )}
+      {/* Add Lead Modal */}
+      {showAddLead && (
+        <AddLeadModal
+          onClose={() => setShowAddLead(false)}
+          onLeadCreated={() => refetch()}
+        />
       )}
     </div>
   );

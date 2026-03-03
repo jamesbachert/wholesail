@@ -104,9 +104,9 @@ export function timeAgo(dateStr: string): string {
 }
 
 export function getSignalTagColor(signalType: string): string {
-  const urgentSignals = ['pre_foreclosure', 'probate', 'tax_delinquent', 'lien_stacking', 'owner_willing', 'owner_timeline'];
-  const warningSignals = ['divorce', 'code_violation', 'inherited', 'owner_life_event', 'property_condition'];
-  const infoSignals = ['absentee_owner', 'vacant', 'expired_listing', 'owner_responsive'];
+  const urgentSignals = ['pre_foreclosure', 'probate', 'tax_delinquent', 'lien_stacking', 'code_violation', 'owner_willing', 'owner_timeline'];
+  const warningSignals = ['divorce', 'inherited', 'owner_life_event', 'property_condition'];
+  const infoSignals = ['absentee_owner', 'vacant', 'expired_listing', 'owner_responsive', 'rental_property'];
 
   if (urgentSignals.includes(signalType)) return 'danger';
   if (warningSignals.includes(signalType)) return 'warning';

@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -26,6 +26,7 @@ import {
   Zap,
   Check,
   X,
+  Search,
 } from 'lucide-react';
 import { useApi, apiPost, apiPatch } from '@/lib/hooks';
 import {
@@ -255,6 +256,34 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
   const [editingProperty, setEditingProperty] = useState(false);
   const [editingOwner, setEditingOwner] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [checkingRental, setCheckingRental] = useState(false);
+  const [rentalSupported, setRentalSupported] = useState(false);
+
+  useEffect(() => {
+    if (property.zipCode) {
+      fetch('/api/rental-lookup/supported-zips')
+        .then((r) => r.json())
+        .then((data) => {
+          setRentalSupported(data.zipCodes?.includes(property.zipCode) ?? false);
+        })
+        .catch(() => setRentalSupported(false));
+    }
+  }, [property.zipCode]);
+
+  const handleCheckRental = async () => {
+    setCheckingRental(true);
+    try {
+      const res: any = await apiPost(`/api/leads/${leadId}/check-rental`, {});
+      if (res?.error) {
+        console.error('Rental check error:', res.error);
+      }
+      refetch();
+    } catch (err) {
+      console.error('Failed to check rental:', err);
+    } finally {
+      setCheckingRental(false);
+    }
+  };
 
   // Property Details edit state
   const [propForm, setPropForm] = useState({
@@ -464,7 +493,30 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
               <DetailItem label="Zip Code" value={property.zipCode || '—'} />
               <DetailItem label="Vacant" value={property.isVacant != null ? (property.isVacant ? 'Yes' : 'No') : '—'} highlight={property.isVacant} />
               <DetailItem label="Absentee Owner" value={property.isAbsenteeOwner != null ? (property.isAbsenteeOwner ? 'Yes' : 'No') : '—'} highlight={property.isAbsenteeOwner} />
-              <DetailItem label="Rental Property" value={property.isRentalProperty != null ? (property.isRentalProperty ? 'Yes' : 'No') : '—'} highlight={property.isRentalProperty} />
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>Rental Property</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium" style={{ color: property.isRentalProperty ? 'var(--brand-deep)' : 'var(--text-primary)' }}>
+                    {property.isRentalProperty != null ? (property.isRentalProperty ? 'Yes' : 'No') : '—'}
+                  </p>
+                  {rentalSupported && (
+                    <button
+                      onClick={handleCheckRental}
+                      disabled={checkingRental}
+                      className="ws-btn-ghost text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1"
+                      title="Check rental license database"
+                    >
+                      {checkingRental ? <Loader2 size={10} className="animate-spin" /> : <Search size={10} />}
+                      Check
+                    </button>
+                  )}
+                </div>
+                {property.isRentalProperty && property.rentalLicenseExpiration && (
+                  <p className="text-[10px] mt-0.5" style={{ color: new Date(property.rentalLicenseExpiration) < new Date() ? 'var(--danger)' : 'var(--text-tertiary)' }}>
+                    License expires: {formatDate(property.rentalLicenseExpiration)}
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </div>

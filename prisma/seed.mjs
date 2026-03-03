@@ -53,6 +53,7 @@ async function main() {
     { signalType: 'property_condition', label: 'Poor Property Condition', category: 'manual', weight: 10, description: 'Property confirmed in poor condition', sortOrder: 16 },
     { signalType: 'owner_responsive', label: 'Owner Responsive', category: 'manual', weight: 8, description: 'Owner is responsive to calls/texts', sortOrder: 17 },
     { signalType: 'inherited', label: 'Inherited Property', category: 'manual', weight: 18, description: 'Owner confirmed they inherited the property', sortOrder: 18 },
+    { signalType: 'rental_property', label: 'Rental Property', category: 'automated', weight: 8, description: 'Property has an active rental license', sortOrder: 19 },
   ];
 
   for (const sw of scoringWeights) {

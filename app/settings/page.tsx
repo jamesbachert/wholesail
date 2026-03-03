@@ -6,6 +6,7 @@ import {
   MapPin,
   Database,
   Bell,
+  Key,
   Plus,
   Check,
   RefreshCw,
@@ -17,11 +18,15 @@ import {
   XCircle,
   Clock,
   FileText,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Trash2,
 } from 'lucide-react';
 import { defaultScoringWeights } from '@/lib/mockData';
 import { useApi } from '@/lib/hooks';
 
-type SettingsTab = 'scoring' | 'regions' | 'sources' | 'notifications';
+type SettingsTab = 'scoring' | 'regions' | 'sources' | 'notifications' | 'apikeys';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('scoring');
@@ -32,6 +37,7 @@ export default function SettingsPage() {
     { id: 'regions' as const, label: 'Regions', icon: MapPin },
     { id: 'sources' as const, label: 'Data Sources', icon: Database },
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
+    { id: 'apikeys' as const, label: 'API Keys', icon: Key },
   ];
 
   return (
@@ -75,6 +81,7 @@ export default function SettingsPage() {
           {activeTab === 'regions' && <RegionSettings />}
           {activeTab === 'sources' && <SourceSettings />}
           {activeTab === 'notifications' && <NotificationSettings />}
+          {activeTab === 'apikeys' && <ApiKeysSettings />}
         </div>
       </div>
     </div>
@@ -521,6 +528,268 @@ function ToggleRow({ label, description, checked, onChange }: { label: string; d
         <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200"
           style={{ transform: checked ? 'translateX(20px)' : 'translateX(0)' }} />
       </button>
+    </div>
+  );
+}
+
+// ============================================================
+// API KEYS SETTINGS
+// ============================================================
+
+function ApiKeysSettings() {
+  const [keys, setKeys] = useState<Record<string, { configured: boolean; maskedValue: string }>>({});
+  const [loading, setLoading] = useState(true);
+  const [geoapifyKey, setGeoapifyKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [saveMessage, setSaveMessage] = useState('');
+
+  // Fetch current key statuses
+  useEffect(() => {
+    fetchKeys();
+  }, []);
+
+  async function fetchKeys() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/settings/api-keys');
+      const data = await res.json();
+      setKeys(data.keys || {});
+    } catch {
+      // Silently fail — keys just won't show as configured
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveGeoapifyKey() {
+    if (!geoapifyKey.trim()) return;
+    setSaving(true);
+    setSaveMessage('');
+    setTestResult(null);
+    try {
+      const res = await fetch('/api/settings/api-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: 'geoapify', value: geoapifyKey.trim() }),
+      });
+      if (res.ok) {
+        setSaveMessage('API key saved successfully.');
+        setGeoapifyKey('');
+        setShowKey(false);
+        await fetchKeys();
+      } else {
+        const err = await res.json();
+        setSaveMessage(`Error: ${err.error}`);
+      }
+    } catch {
+      setSaveMessage('Failed to save key.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteGeoapifyKey() {
+    setSaving(true);
+    setSaveMessage('');
+    setTestResult(null);
+    try {
+      await fetch('/api/settings/api-keys', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: 'geoapify' }),
+      });
+      setSaveMessage('API key removed.');
+      await fetchKeys();
+    } catch {
+      setSaveMessage('Failed to remove key.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function testGeoapifyKey() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch('/api/geocode/autocomplete?q=123+Main+St');
+      const data = await res.json();
+      if (data.error) {
+        setTestResult({ success: false, message: data.error });
+      } else if (data.suggestions && data.suggestions.length > 0) {
+        setTestResult({ success: true, message: `Working — returned ${data.suggestions.length} result(s)` });
+      } else {
+        setTestResult({ success: true, message: 'Connected (no results for test query, but API key is valid)' });
+      }
+    } catch {
+      setTestResult({ success: false, message: 'Failed to reach autocomplete endpoint' });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  const isConfigured = keys.geoapify?.configured;
+
+  return (
+    <div className="space-y-4">
+      <div className="ws-card p-5">
+        <div className="mb-1">
+          <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+            API Keys
+          </h3>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+            Manage external service API keys used by WholeSail
+          </p>
+        </div>
+      </div>
+
+      {/* Geoapify */}
+      <div className="ws-card p-5">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                Geoapify
+              </h4>
+              {loading ? (
+                <Loader2 size={12} className="animate-spin" style={{ color: 'var(--text-tertiary)' }} />
+              ) : isConfigured ? (
+                <span className="ws-tag ws-tag-success text-[10px]">Active</span>
+              ) : (
+                <span className="ws-tag ws-tag-neutral text-[10px]">Not configured</span>
+              )}
+            </div>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+              Used for address autocomplete when adding leads.
+              Free tier includes 3,000 requests/day.
+            </p>
+          </div>
+          <a
+            href="https://myprojects.geoapify.com/register"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs font-medium shrink-0"
+            style={{ color: 'var(--brand-ocean)' }}
+          >
+            Get a free key <ExternalLink size={12} />
+          </a>
+        </div>
+
+        {/* Current key display */}
+        {isConfigured && (
+          <div
+            className="flex items-center justify-between p-3 rounded-lg mb-3"
+            style={{ backgroundColor: 'var(--bg-elevated)' }}
+          >
+            <div className="flex items-center gap-2">
+              <Key size={14} style={{ color: 'var(--brand-deep)' }} />
+              <span className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>
+                {keys.geoapify.maskedValue}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={testGeoapifyKey}
+                disabled={testing}
+                className="ws-btn-secondary text-xs"
+              >
+                {testing ? (
+                  <><Loader2 size={12} className="animate-spin" /> Testing...</>
+                ) : (
+                  'Test'
+                )}
+              </button>
+              <button
+                onClick={deleteGeoapifyKey}
+                disabled={saving}
+                className="p-1.5 rounded-lg transition-colors hover:bg-red-50"
+                title="Remove API key"
+              >
+                <Trash2 size={14} style={{ color: 'var(--danger)' }} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Test result */}
+        {testResult && (
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs mb-3"
+            style={{
+              backgroundColor: testResult.success ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+              color: testResult.success ? 'var(--success)' : 'var(--danger)',
+            }}
+          >
+            {testResult.success ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+            {testResult.message}
+          </div>
+        )}
+
+        {/* Save message */}
+        {saveMessage && (
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs mb-3"
+            style={{
+              backgroundColor: saveMessage.startsWith('Error') ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+              color: saveMessage.startsWith('Error') ? 'var(--danger)' : 'var(--success)',
+            }}
+          >
+            {saveMessage.startsWith('Error') ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
+            {saveMessage}
+          </div>
+        )}
+
+        {/* Input for new/update key */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={geoapifyKey}
+              onChange={(e) => setGeoapifyKey(e.target.value)}
+              placeholder={isConfigured ? 'Enter new key to replace...' : 'Paste your Geoapify API key...'}
+              className="ws-input text-sm pr-10"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey(!showKey)}
+              className="absolute right-3 top-1/2 -translate-y-1/2"
+              title={showKey ? 'Hide key' : 'Show key'}
+            >
+              {showKey
+                ? <EyeOff size={14} style={{ color: 'var(--text-tertiary)' }} />
+                : <Eye size={14} style={{ color: 'var(--text-tertiary)' }} />
+              }
+            </button>
+          </div>
+          <button
+            onClick={saveGeoapifyKey}
+            disabled={!geoapifyKey.trim() || saving}
+            className="ws-btn-primary text-xs shrink-0"
+          >
+            {saving ? (
+              <><Loader2 size={12} className="animate-spin" /> Saving...</>
+            ) : (
+              <><Check size={14} /> Save</>
+            )}
+          </button>
+        </div>
+
+        <p className="text-[10px] mt-2" style={{ color: 'var(--text-tertiary)' }}>
+          Sign up at{' '}
+          <a
+            href="https://www.geoapify.com/pricing"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline"
+            style={{ color: 'var(--brand-ocean)' }}
+          >
+            geoapify.com
+          </a>
+          {' '}to get a free API key (no credit card required). The free tier supports up to 3,000 autocomplete requests per day.
+        </p>
+      </div>
     </div>
   );
 }

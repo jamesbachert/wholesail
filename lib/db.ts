@@ -212,6 +212,8 @@ export async function updateProperty(propertyId: string, data: {
   isVacant?: boolean;
   isAbsenteeOwner?: boolean;
   isRentalProperty?: boolean | null;
+  rentalLicenseExpiration?: Date | null;
+  rentalLicenseNumber?: string | null;
   ownerName?: string;
   ownerPhone?: string;
   ownerPhone2?: string;
@@ -426,67 +428,55 @@ export async function getDashboardStats(regionId?: string) {
   const where: any = {};
   if (regionId) where.regionId = regionId;
 
-  const [
-    totalLeads,
-    newLeads,
-    contactedLeads,
-    warmLeads,
-    hotLeads,
-    underContract,
-    handedOff,
-    closedLeads,
-  ] = await Promise.all([
-    prisma.lead.count({ where }),
-    prisma.lead.count({ where: { ...where, status: 'NEW' } }),
-    prisma.lead.count({ where: { ...where, status: 'CONTACTED' } }),
-    prisma.lead.count({ where: { ...where, status: 'WARM' } }),
-    prisma.lead.count({ where: { ...where, status: 'HOT' } }),
-    prisma.lead.count({ where: { ...where, status: 'UNDER_CONTRACT' } }),
-    prisma.lead.count({ where: { ...where, status: 'HANDED_OFF' } }),
-    prisma.lead.count({ where: { ...where, status: 'CLOSED' } }),
-  ]);
+  // Single grouped query instead of 8 separate count() calls
+  const statusCounts = await prisma.lead.groupBy({
+    by: ['status'],
+    where,
+    _count: true,
+  });
 
-  // Today's activity
+  const countByStatus = (status: string) =>
+    statusCounts.find((s) => s.status === status)?._count ?? 0;
+
+  const totalLeads = statusCounts.reduce((sum, s) => sum + s._count, 0);
+
+  // Today's activity — single grouped query instead of 3 separate count() calls
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
 
-  const [callsToday, textsToday, responsesToday] = await Promise.all([
-    prisma.contactLog.count({
-      where: { type: 'CALL_OUTBOUND', createdAt: { gte: todayStart } },
+  const [activityCounts, followUpsDue] = await Promise.all([
+    prisma.contactLog.groupBy({
+      by: ['type'],
+      where: { createdAt: { gte: todayStart } },
+      _count: true,
     }),
-    prisma.contactLog.count({
-      where: { type: 'SMS_OUTBOUND', createdAt: { gte: todayStart } },
-    }),
-    prisma.contactLog.count({
+    prisma.lead.count({
       where: {
-        type: { in: ['SMS_INBOUND', 'CALL_INBOUND'] },
-        createdAt: { gte: todayStart },
+        ...where,
+        nextFollowUp: { gte: todayStart, lte: todayEnd },
       },
     }),
   ]);
 
-  // Follow-ups due today
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
-  const followUpsDue = await prisma.lead.count({
-    where: {
-      ...where,
-      nextFollowUp: { gte: todayStart, lte: todayEnd },
-    },
-  });
+  const countByType = (types: string[]) =>
+    activityCounts
+      .filter((a) => types.includes(a.type))
+      .reduce((sum, a) => sum + a._count, 0);
 
   return {
     totalLeads,
-    newThisWeek: newLeads,
-    contacted: contactedLeads,
-    warm: warmLeads,
-    hot: hotLeads,
-    underContract,
-    handedOff,
-    closed: closedLeads,
-    callsMadeToday: callsToday,
-    textsSentToday: textsToday,
-    responsesReceived: responsesToday,
+    newThisWeek: countByStatus('NEW'),
+    contacted: countByStatus('CONTACTED'),
+    warm: countByStatus('WARM'),
+    hot: countByStatus('HOT'),
+    underContract: countByStatus('UNDER_CONTRACT'),
+    handedOff: countByStatus('HANDED_OFF'),
+    closed: countByStatus('CLOSED'),
+    callsMadeToday: countByType(['CALL_OUTBOUND']),
+    textsSentToday: countByType(['SMS_OUTBOUND']),
+    responsesReceived: countByType(['SMS_INBOUND', 'CALL_INBOUND']),
     followUpsDueToday: followUpsDue,
   };
 }

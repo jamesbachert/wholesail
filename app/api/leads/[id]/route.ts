@@ -24,6 +24,7 @@ export async function GET(
 const ALLOWED_PROPERTY_FIELDS = new Set([
   'propertyType', 'bedrooms', 'bathrooms', 'sqft', 'yearBuilt', 'county',
   'isVacant', 'isAbsenteeOwner', 'isRentalProperty',
+  'rentalLicenseExpiration', 'rentalLicenseNumber',
   'ownerName', 'ownerPhone', 'ownerPhone2', 'ownerEmail',
   'ownerMailingAddress', 'ownerCity', 'ownerState', 'ownerZip',
 ]);

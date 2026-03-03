@@ -48,7 +48,7 @@ export class AllentownCodeViolationsConnector implements DataSourceConnector {
   regionSlug = 'lehigh-valley';
   description = 'Active code enforcement cases from the City of Allentown EnerGov system via ArcGIS FeatureServer';
 
-  async fetch(): Promise<ParsedRecord[]> {
+  async fetchAndParse(): Promise<ParsedRecord[]> {
     const allFeatures: ArcGISFeature[] = [];
     let offset = 0;
     let hasMore = true;

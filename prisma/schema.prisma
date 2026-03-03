@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ============================================================
@@ -80,6 +81,8 @@ model Property {
 
   isVacant        Boolean  @default(false)
   isRentalProperty Boolean? // Yes/No — can be set by connector (e.g. Allentown rental license DB) or manually
+  rentalLicenseExpiration DateTime? // When the rental license expires (from lookup connector)
+  rentalLicenseNumber    String?   // License number from the rental license database
   hasCodeViolations Boolean @default(false)
 
   latitude        Float?
@@ -389,4 +392,16 @@ model Notification {
   createdAt DateTime         @default(now())
 
   @@index([isRead, createdAt(sort: Desc)])
+}
+
+// ============================================================
+// APP SETTINGS (key-value store for API keys, preferences, etc.)
+// ============================================================
+
+model AppSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique  // e.g. "api_key_geoapify"
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

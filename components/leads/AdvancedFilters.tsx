@@ -49,6 +49,7 @@ const SIGNAL_OPTIONS = [
   { type: 'high_equity', label: 'High Equity (50%+)', category: 'financial' },
   { type: 'free_and_clear', label: 'Owned Free & Clear', category: 'financial' },
   { type: 'vacant_property', label: 'Vacant Property', category: 'condition' },
+  { type: 'rental_property', label: 'Rental Property', category: 'condition' },
   { type: 'fire_flood_damage', label: 'Fire / Flood Damage', category: 'condition' },
   { type: 'deferred_maintenance', label: 'Deferred Maintenance', category: 'condition' },
 ];
