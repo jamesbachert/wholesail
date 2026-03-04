@@ -91,6 +91,19 @@ async function main() {
   console.log(`✅ Scoring weights: ${signals.length} signals seeded`);
 
   // ============================================================
+  // DEFAULT WORKSPACE
+  // ============================================================
+  const workspace = await prisma.workspace.upsert({
+    where: { slug: 'default' },
+    update: {},
+    create: {
+      name: 'My Workspace',
+      slug: 'default',
+    },
+  });
+  console.log(`✅ Workspace: ${workspace.name}`);
+
+  // ============================================================
   // CALL SCRIPTS
   // ============================================================
   const scripts = [

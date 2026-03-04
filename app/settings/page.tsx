@@ -25,19 +25,25 @@ import {
   ChevronUp,
   Settings,
   X,
+  UserCircle,
+  FileText,
+  Pencil,
 } from 'lucide-react';
-import { useApi } from '@/lib/hooks';
+import { useApi, apiPost, apiPatch, apiDelete } from '@/lib/hooks';
 import { useRegion } from '@/components/shared/RegionProvider';
+import { useWorkspace, type Workspace } from '@/components/shared/WorkspaceProvider';
 
-type SettingsTab = 'scoring' | 'regions' | 'sources' | 'notifications' | 'apikeys';
+type SettingsTab = 'account' | 'scoring' | 'regions' | 'sources' | 'scripts' | 'notifications' | 'apikeys';
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('scoring');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('account');
 
   const tabs = [
+    { id: 'account' as const, label: 'Account', icon: UserCircle },
     { id: 'scoring' as const, label: 'Scoring Weights', icon: Sliders },
     { id: 'regions' as const, label: 'Regions', icon: MapPin },
     { id: 'sources' as const, label: 'Data Sources', icon: Database },
+    { id: 'scripts' as const, label: 'Scripts & Templates', icon: FileText },
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
     { id: 'apikeys' as const, label: 'API Keys', icon: Key },
   ];
@@ -79,9 +85,11 @@ export default function SettingsPage() {
         </div>
 
         <div className="flex-1 min-w-0">
+          {activeTab === 'account' && <AccountSettings />}
           {activeTab === 'scoring' && <ScoringSettings />}
           {activeTab === 'regions' && <RegionSettings />}
           {activeTab === 'sources' && <SourceSettings />}
+          {activeTab === 'scripts' && <ScriptsTemplatesSettings />}
           {activeTab === 'notifications' && <NotificationSettings />}
           {activeTab === 'apikeys' && <ApiKeysSettings />}
         </div>
@@ -1168,5 +1176,473 @@ function ApiKeysSettings() {
         </p>
       </div>
     </div>
+  );
+}
+
+// ============================================================
+// ACCOUNT SETTINGS — workspace management
+// ============================================================
+
+function AccountSettings() {
+  const { activeWorkspace, workspaces, setActiveWorkspace, refetchWorkspaces, loading } = useWorkspace();
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function handleCreate() {
+    if (!newName.trim()) return;
+    setSaving(true);
+    try {
+      const res = await apiPost<Workspace>('/api/workspaces', { name: newName.trim() });
+      if (res) {
+        setActiveWorkspace(res);
+        refetchWorkspaces();
+        setNewName('');
+        setCreating(false);
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="ws-card p-5">
+        <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+          Workspace
+        </h3>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+          Select which workspace you belong to. All team members in the same
+          workspace share leads, scripts, signal weights, and settings.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-8 gap-2" style={{ color: 'var(--text-secondary)' }}>
+          <Loader2 size={16} className="animate-spin" /> Loading workspaces...
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {workspaces.map((ws) => {
+            const isActive = activeWorkspace?.id === ws.id;
+            return (
+              <button
+                key={ws.id}
+                onClick={() => setActiveWorkspace(ws)}
+                className="ws-card p-4 w-full text-left flex items-center gap-3 transition-all"
+                style={{
+                  borderColor: isActive ? 'var(--brand-deep)' : undefined,
+                  borderWidth: isActive ? '2px' : undefined,
+                }}
+              >
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
+                  style={{
+                    backgroundColor: isActive ? 'var(--brand-deep)' : 'var(--bg-elevated)',
+                    color: isActive ? '#fff' : 'var(--text-tertiary)',
+                  }}
+                >
+                  {ws.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                    {ws.name}
+                  </p>
+                  <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                    {ws.slug}
+                  </p>
+                </div>
+                {isActive && (
+                  <Check size={18} style={{ color: 'var(--brand-deep)' }} className="shrink-0" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {creating ? (
+        <div className="ws-card p-4 space-y-3">
+          <input
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+            className="ws-input text-sm"
+            placeholder="Workspace name (e.g. Homerun Home Solutions)"
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleCreate}
+              disabled={!newName.trim() || saving}
+              className="ws-btn-primary text-xs"
+            >
+              {saving ? <><Loader2 size={12} className="animate-spin" /> Creating...</> : <><Check size={14} /> Create</>}
+            </button>
+            <button onClick={() => { setCreating(false); setNewName(''); }} className="ws-btn-secondary text-xs">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setCreating(true)} className="ws-btn-secondary text-xs">
+          <Plus size={14} /> Create Workspace
+        </button>
+      )}
+
+      <div className="ws-card p-4">
+        <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          Team Access
+        </h4>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+          User accounts and invite links are coming soon. For now, all users on the same deployment share workspace data.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// SCRIPTS & TEMPLATES SETTINGS
+// ============================================================
+
+interface ScriptItem {
+  id: string;
+  title: string;
+  slug: string;
+  body: string;
+  description: string | null;
+  isDefault: boolean;
+  isActive: boolean;
+  workspaceId: string | null;
+  language?: string;
+}
+
+function ScriptsTemplatesSettings() {
+  const { activeWorkspace } = useWorkspace();
+  const [subTab, setSubTab] = useState<'call' | 'sms'>('call');
+
+  return (
+    <div className="space-y-4">
+      <div className="ws-card p-5">
+        <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+          Scripts & Templates
+        </h3>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+          Manage call scripts and SMS templates for your workspace.
+        </p>
+        <div className="flex gap-1 mt-3">
+          {(['call', 'sms'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setSubTab(tab)}
+              className="px-4 py-2 rounded-lg text-xs font-medium transition-all"
+              style={
+                subTab === tab
+                  ? { backgroundColor: 'var(--brand-deep)', color: '#fff' }
+                  : { color: 'var(--text-secondary)', backgroundColor: 'var(--bg-elevated)' }
+              }
+            >
+              {tab === 'call' ? 'Call Scripts' : 'SMS Templates'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {subTab === 'call' ? (
+        <ScriptsList workspaceId={activeWorkspace?.id || null} type="call" />
+      ) : (
+        <ScriptsList workspaceId={activeWorkspace?.id || null} type="sms" />
+      )}
+    </div>
+  );
+}
+
+function ScriptsList({ workspaceId, type }: { workspaceId: string | null; type: 'call' | 'sms' }) {
+  const apiBase = type === 'call' ? '/api/scripts' : '/api/sms-templates';
+  const fetchUrl = workspaceId ? `${apiBase}?workspaceId=${workspaceId}` : apiBase;
+  const { data, loading, refetch } = useApi<ScriptItem[]>(fetchUrl);
+
+  const [editingItem, setEditingItem] = useState<ScriptItem | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  const items = data || [];
+  const preBuilt = items.filter((s) => !s.workspaceId);
+  const custom = items.filter((s) => s.workspaceId);
+
+  async function handleDelete(id: string) {
+    if (!confirm('Delete this item?')) return;
+    await apiDelete(`${apiBase}/${id}`);
+    refetch();
+  }
+
+  async function handleSetDefault(id: string) {
+    await apiPatch(`${apiBase}/${id}`, { isDefault: true });
+    refetch();
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Custom (workspace) items */}
+      <div className="ws-card overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border-primary)' }}>
+          <div>
+            <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+              Your {type === 'call' ? 'Scripts' : 'Templates'}
+            </h4>
+            <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+              Custom {type === 'call' ? 'scripts' : 'templates'} for your workspace
+            </p>
+          </div>
+          <button
+            onClick={() => setCreating(true)}
+            className="ws-btn-primary text-xs"
+            disabled={!workspaceId}
+          >
+            <Plus size={14} /> New {type === 'call' ? 'Script' : 'Template'}
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-8 gap-2" style={{ color: 'var(--text-secondary)' }}>
+            <Loader2 size={16} className="animate-spin" />
+          </div>
+        ) : custom.length === 0 ? (
+          <div className="px-5 py-8 text-center">
+            <FileText size={24} style={{ color: 'var(--text-tertiary)' }} className="mx-auto mb-2" />
+            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+              No custom {type === 'call' ? 'scripts' : 'templates'} yet.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
+            {custom.map((item) => (
+              <div key={item.id} className="flex items-center gap-4 px-5 py-3.5">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{item.title}</p>
+                    {item.isDefault && <span className="ws-tag ws-tag-success text-[10px]">Default</span>}
+                    {type === 'sms' && item.language && (
+                      <span className="ws-tag ws-tag-neutral text-[10px]">{item.language === 'es' ? 'ES' : 'EN'}</span>
+                    )}
+                  </div>
+                  {item.description && (
+                    <p className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--text-tertiary)' }}>{item.description}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {!item.isDefault && (
+                    <button onClick={() => handleSetDefault(item.id)} className="ws-btn-ghost text-[10px] px-2 py-1">
+                      Set Default
+                    </button>
+                  )}
+                  <button onClick={() => setEditingItem(item)} className="ws-btn-ghost p-1.5">
+                    <Pencil size={14} />
+                  </button>
+                  <button onClick={() => handleDelete(item.id)} className="ws-btn-ghost p-1.5">
+                    <Trash2 size={14} style={{ color: 'var(--danger)' }} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Pre-built items */}
+      {preBuilt.length > 0 && (
+        <div className="ws-card overflow-hidden">
+          <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--border-primary)' }}>
+            <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+              Pre-Built {type === 'call' ? 'Scripts' : 'Templates'}
+            </h4>
+            <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+              Available to all workspaces (read-only)
+            </p>
+          </div>
+          <div className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
+            {preBuilt.map((item) => (
+              <div key={item.id} className="flex items-center gap-4 px-5 py-3.5">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{item.title}</p>
+                    {item.isDefault && <span className="ws-tag ws-tag-success text-[10px]">Default</span>}
+                    <span className="ws-tag ws-tag-info text-[10px]">Pre-built</span>
+                  </div>
+                  {item.description && (
+                    <p className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--text-tertiary)' }}>{item.description}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Editor Modal */}
+      {(creating || editingItem) && (
+        <ScriptEditorModal
+          item={editingItem}
+          type={type}
+          workspaceId={workspaceId}
+          onClose={() => { setCreating(false); setEditingItem(null); }}
+          onSaved={() => { refetch(); setCreating(false); setEditingItem(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ScriptEditorModal({
+  item,
+  type,
+  workspaceId,
+  onClose,
+  onSaved,
+}: {
+  item: ScriptItem | null;
+  type: 'call' | 'sms';
+  workspaceId: string | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isEditing = !!item;
+  const [title, setTitle] = useState(item?.title || '');
+  const [description, setDescription] = useState(item?.description || '');
+  const [body, setBody] = useState(item?.body || '');
+  const [language, setLanguage] = useState(item?.language || 'en');
+  const [saving, setSaving] = useState(false);
+
+  const apiBase = type === 'call' ? '/api/scripts' : '/api/sms-templates';
+
+  async function handleSave() {
+    if (!title.trim() || !body.trim()) return;
+    setSaving(true);
+    try {
+      if (isEditing) {
+        await apiPatch(`${apiBase}/${item.id}`, {
+          title: title.trim(),
+          body: body.trim(),
+          description: description.trim() || null,
+          ...(type === 'sms' && { language }),
+        });
+      } else {
+        await apiPost(apiBase, {
+          title: title.trim(),
+          body: body.trim(),
+          description: description.trim() || null,
+          workspaceId,
+          ...(type === 'sms' && { language }),
+        });
+      }
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div
+        className="ws-card flex flex-col overflow-hidden w-full max-w-2xl mx-4"
+        style={{ backgroundColor: 'var(--bg-surface)', maxHeight: '85vh' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 pb-3">
+          <h3 className="font-semibold text-lg" style={{ color: 'var(--text-primary)' }}>
+            {isEditing ? 'Edit' : 'New'} {type === 'call' ? 'Call Script' : 'SMS Template'}
+          </h3>
+          <button onClick={onClose} style={{ color: 'var(--text-tertiary)' }}>
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Form */}
+        <div className="flex-1 overflow-y-auto p-5 pt-2 space-y-3">
+          <div>
+            <label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-secondary)' }}>Title</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="ws-input text-sm"
+              placeholder={type === 'call' ? 'e.g. Warm Follow-Up Script' : 'e.g. Initial Outreach'}
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-secondary)' }}>Description (optional)</label>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="ws-input text-sm"
+              placeholder="Brief description of when to use this"
+            />
+          </div>
+
+          {type === 'sms' && (
+            <div>
+              <label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-secondary)' }}>Language</label>
+              <div className="flex rounded-lg overflow-hidden border w-fit" style={{ borderColor: 'var(--border-primary)' }}>
+                <button
+                  onClick={() => setLanguage('en')}
+                  className="px-3 py-1.5 text-xs font-medium transition-colors"
+                  style={{
+                    backgroundColor: language === 'en' ? 'var(--brand-deep)' : 'transparent',
+                    color: language === 'en' ? '#fff' : 'var(--text-secondary)',
+                  }}
+                >
+                  English
+                </button>
+                <button
+                  onClick={() => setLanguage('es')}
+                  className="px-3 py-1.5 text-xs font-medium transition-colors"
+                  style={{
+                    backgroundColor: language === 'es' ? 'var(--brand-deep)' : 'transparent',
+                    color: language === 'es' ? '#fff' : 'var(--text-secondary)',
+                  }}
+                >
+                  Espa&ntilde;ol
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="text-xs font-medium block mb-1" style={{ color: 'var(--text-secondary)' }}>
+              Body
+            </label>
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              className="ws-input text-sm min-h-[300px] resize-y"
+              placeholder="Write your script or template here..."
+            />
+            <p className="text-[10px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
+              Available placeholders: [Owner Name], [Address], [Your Name]
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center gap-2 p-5 pt-3 border-t" style={{ borderColor: 'var(--border-primary)' }}>
+          <button onClick={onClose} className="ws-btn-secondary text-xs flex-1 justify-center py-2.5">
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!title.trim() || !body.trim() || saving}
+            className="ws-btn-primary text-xs flex-1 justify-center py-2.5"
+          >
+            {saving ? <><Loader2 size={12} className="animate-spin" /> Saving...</> : <><Check size={14} /> {isEditing ? 'Save Changes' : 'Create'}</>}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }

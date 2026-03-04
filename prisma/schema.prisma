@@ -320,20 +320,61 @@ model LeadNote {
 }
 
 // ============================================================
+// WORKSPACES
+// ============================================================
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  callScripts  CallScript[]
+  smsTemplates SmsTemplate[]
+}
+
+// ============================================================
 // CALL SCRIPTS
 // ============================================================
 
 model CallScript {
-  id          String   @id @default(cuid())
+  id          String     @id @default(cuid())
   title       String
-  slug        String   @unique
+  slug        String     @unique
   body        String
   description String?
-  isDefault   Boolean  @default(false)
-  sortOrder   Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isDefault   Boolean    @default(false)
+  sortOrder   Int        @default(0)
+  isActive    Boolean    @default(true)
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([workspaceId])
+}
+
+// ============================================================
+// SMS TEMPLATES
+// ============================================================
+
+model SmsTemplate {
+  id          String     @id @default(cuid())
+  title       String
+  slug        String     @unique
+  body        String
+  language    String     @default("en") // "en" or "es"
+  description String?
+  isDefault   Boolean    @default(false)
+  sortOrder   Int        @default(0)
+  isActive    Boolean    @default(true)
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([workspaceId])
 }
 
 // ============================================================

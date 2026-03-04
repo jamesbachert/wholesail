@@ -57,20 +57,15 @@ export async function checkRentalLicense(leadId: string): Promise<RentalCheckRes
     });
     const points = weightDef?.weight ?? 8;
 
-    // Add or update the rental_property signal
+    // Add or update the rental_property signal (find ANY existing, active or not, to avoid duplicates)
     const existingSignal = lead.signals.find(
-      (s) => s.signalType === 'rental_property' && s.isActive
+      (s) => s.signalType === 'rental_property'
     );
 
-    // Build signal value text with expiration date
-    const valueParts: string[] = [];
-    if (result.expirationDate) {
-      valueParts.push(`Expires: ${result.expirationDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`);
-    }
-    if (result.status) {
-      valueParts.push(result.status);
-    }
-    const signalValue = valueParts.length > 0 ? valueParts.join(' · ') : 'Active rental license';
+    // Build signal value text — units only (expiration stored as eventDate)
+    const signalValue = result.numberOfUnits
+      ? `${result.numberOfUnits} unit${result.numberOfUnits > 1 ? 's' : ''}`
+      : 'Active rental license';
 
     if (!existingSignal) {
       await prisma.leadSignal.create({
@@ -85,15 +80,14 @@ export async function checkRentalLicense(leadId: string): Promise<RentalCheckRes
           isAutomated: true,
           isLocked: true,
           isActive: true,
+          eventDate: result.expirationDate ?? null,
         },
       });
     } else {
-      // Update existing signal value
+      // Reactivate and update existing signal (handles previously deactivated signals)
       await prisma.leadSignal.update({
         where: { id: existingSignal.id },
-        data: {
-          value: signalValue,
-        },
+        data: { value: signalValue, isActive: true, points, eventDate: result.expirationDate ?? null },
       });
     }
 

@@ -11,7 +11,10 @@ import {
   Copy,
   Check,
   FileText,
+  CalendarClock,
 } from 'lucide-react';
+import { formatPhone } from '@/lib/phone';
+import { useWorkspace } from '@/components/shared/WorkspaceProvider';
 
 interface CallScript {
   id: string;
@@ -41,6 +44,21 @@ const OUTCOMES = [
   { value: 'DO_NOT_CALL', label: 'Do Not Call', color: 'var(--danger)' },
 ];
 
+const FOLLOW_UP_CHIPS = [
+  { label: '7 days', days: 7 },
+  { label: '30 days', days: 30 },
+  { label: '60 days', days: 60 },
+  { label: '90 days', days: 90 },
+  { label: '6 months', days: 183 },
+  { label: '1 year', days: 365 },
+];
+
+function addDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+}
+
 export function CallDialog({
   leadId,
   ownerName,
@@ -51,18 +69,24 @@ export function CallDialog({
 }: CallDialogProps) {
   const [scripts, setScripts] = useState<CallScript[]>([]);
   const [selectedScript, setSelectedScript] = useState<string>('');
-  const [showScript, setShowScript] = useState(false);
+  const [showScript, setShowScript] = useState(true);
   const [outcome, setOutcome] = useState('');
   const [notes, setNotes] = useState('');
   const [calling, setCalling] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [activeChip, setActiveChip] = useState<number | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const { activeWorkspace } = useWorkspace();
 
   // Fetch scripts
   useEffect(() => {
-    fetch('/api/scripts')
+    const url = activeWorkspace
+      ? `/api/scripts?workspaceId=${activeWorkspace.id}`
+      : '/api/scripts';
+    fetch(url)
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
@@ -73,7 +97,7 @@ export function CallDialog({
         }
       })
       .catch(() => {});
-  }, []);
+  }, [activeWorkspace]);
 
   // Timer
   useEffect(() => {
@@ -104,6 +128,24 @@ export function CallDialog({
     setCalling(false);
   }
 
+  function handleChipClick(chip: typeof FOLLOW_UP_CHIPS[number], index: number) {
+    if (activeChip === index) {
+      setFollowUpDate('');
+      setActiveChip(null);
+    } else {
+      setFollowUpDate(addDays(chip.days));
+      setActiveChip(index);
+    }
+  }
+
+  function handleDateChange(value: string) {
+    setFollowUpDate(value);
+    // Clear active chip if date doesn't match any chip
+    if (activeChip !== null && value !== addDays(FOLLOW_UP_CHIPS[activeChip].days)) {
+      setActiveChip(null);
+    }
+  }
+
   async function handleSaveCall() {
     if (!outcome) {
       alert('Please select a call outcome');
@@ -120,6 +162,7 @@ export function CallDialog({
           duration: callDuration || null,
           notes: notes || null,
           scriptUsed: selectedScript || null,
+          followUpDate: followUpDate || null,
         }),
       });
       if (res.ok) {
@@ -136,7 +179,7 @@ export function CallDialog({
 
   function copyPhone() {
     if (phoneNumber) {
-      navigator.clipboard.writeText(phoneNumber);
+      navigator.clipboard.writeText(phoneNumber.replace(/\D/g, ''));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -159,7 +202,7 @@ export function CallDialog({
         }}
       >
         {/* Left Panel — Dialer & Notes */}
-        <div className="flex-1 p-6 flex flex-col min-w-0">
+        <div className="flex-1 p-6 flex flex-col min-w-0 overflow-y-auto">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -177,12 +220,12 @@ export function CallDialog({
 
           {/* Phone Number */}
           <div
-            className="flex items-center gap-3 p-3 rounded-lg mb-4"
+            className="flex items-center gap-2.5 px-3 py-2 rounded-lg mb-3"
             style={{ backgroundColor: 'var(--bg-elevated)' }}
           >
-            <Phone size={18} style={{ color: 'var(--brand-deep)' }} />
-            <span className="font-mono text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
-              {phoneNumber || 'No phone number'}
+            <Phone size={16} style={{ color: 'var(--brand-deep)' }} />
+            <span className="font-mono text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+              {phoneNumber ? formatPhone(phoneNumber) : 'No phone number'}
             </span>
             {phoneNumber && (
               <button onClick={copyPhone} className="ml-auto p-1.5 rounded-md" style={{ color: 'var(--text-tertiary)' }}>
@@ -231,7 +274,7 @@ export function CallDialog({
               {OUTCOMES.map((o) => (
                 <button
                   key={o.value}
-                  onClick={() => setOutcome(o.value)}
+                  onClick={() => setOutcome(outcome === o.value ? '' : o.value)}
                   className={`px-3 py-2 rounded-lg text-sm font-medium border transition-all text-left ${
                     outcome === o.value ? 'ring-2' : ''
                   }`}
@@ -249,16 +292,46 @@ export function CallDialog({
           </div>
 
           {/* Notes */}
-          <div className="flex-1 mb-4">
+          <div className="mb-4">
             <label className="text-sm font-medium block mb-2" style={{ color: 'var(--text-secondary)' }}>
               Call Notes
             </label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="ws-input h-full min-h-[100px] resize-none"
+              className="ws-input min-h-[80px] resize-none"
               placeholder="What was discussed? Any follow-up needed?"
             />
+          </div>
+
+          {/* Follow-Up Date */}
+          <div className="mb-4">
+            <label className="text-sm font-medium flex items-center gap-1.5 mb-2" style={{ color: 'var(--text-secondary)' }}>
+              <CalendarClock size={14} />
+              Follow-Up Date
+            </label>
+            <input
+              type="date"
+              value={followUpDate}
+              onChange={(e) => handleDateChange(e.target.value)}
+              className="ws-input text-sm mb-2"
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {FOLLOW_UP_CHIPS.map((chip, i) => (
+                <button
+                  key={chip.days}
+                  onClick={() => handleChipClick(chip, i)}
+                  className="px-2.5 py-1 rounded-full text-xs font-medium border transition-all"
+                  style={{
+                    borderColor: activeChip === i ? 'var(--brand-deep)' : 'var(--border-primary)',
+                    backgroundColor: activeChip === i ? 'var(--brand-deep)' : 'transparent',
+                    color: activeChip === i ? '#fff' : 'var(--text-secondary)',
+                  }}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Save Button */}
@@ -279,7 +352,7 @@ export function CallDialog({
           </div>
         </div>
 
-        {/* Right Panel — Call Script (expandable) */}
+        {/* Right Panel — Call Script (expandable, default expanded) */}
         <div
           className={`border-l transition-all duration-300 flex flex-col ${
             showScript ? 'w-[380px]' : 'w-[44px]'
@@ -301,7 +374,10 @@ export function CallDialog({
                 <span className="text-sm font-medium">Script</span>
               </>
             ) : (
-              <ChevronLeft size={16} />
+              <div className="flex flex-col items-center gap-1">
+                <ChevronLeft size={16} />
+                <FileText size={14} style={{ color: 'var(--brand-deep)' }} />
+              </div>
             )}
           </button>
 
