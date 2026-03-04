@@ -39,20 +39,20 @@ async function main() {
     { signalType: 'pre_foreclosure',    label: 'Pre-Foreclosure / NOD',   weight: 45, category: 'distress',   sortOrder: 1,  description: 'Notice of Default or pre-foreclosure filing detected' },
     { signalType: 'probate',            label: 'Probate / Estate',         weight: 38, category: 'distress',   sortOrder: 2,  description: 'Property owner deceased, estate in probate' },
     { signalType: 'tax_delinquent',     label: 'Tax Delinquent',           weight: 32, category: 'distress',   sortOrder: 3,  description: 'Delinquent property taxes, tax claim or repository' },
-    { signalType: 'divorce',            label: 'Recent Divorce',           weight: 28, category: 'distress',   sortOrder: 4,  description: 'Divorce filing involving property owner' },
+    { signalType: 'divorce',            label: 'Divorce – Recent Filing or Finalized', weight: 28, category: 'distress',   sortOrder: 4,  description: 'Divorce filing involving property owner' },
     { signalType: 'code_violation',     label: 'Code Violation',           weight: 22, category: 'distress',   sortOrder: 5,  description: 'Active code violations or condemnation' },
     { signalType: 'liens_judgments',    label: 'Liens / Judgments',        weight: 18, category: 'distress',   sortOrder: 6,  description: 'Active liens or judgments against property or owner' },
 
     // OWNERSHIP (5 signals)
     { signalType: 'owner_deceased',     label: 'Owner Deceased',           weight: 35, category: 'ownership',  sortOrder: 7,  description: 'Property owner recently deceased' },
-    { signalType: 'inherited',          label: 'Inherited',                weight: 25, category: 'ownership',  sortOrder: 8,  description: 'Property was inherited by current owner' },
+    { signalType: 'inherited',          label: 'Inherited Property',       weight: 25, category: 'ownership',  sortOrder: 8,  description: 'Property was inherited by current owner' },
     { signalType: 'absentee_owner',     label: 'Absentee Owner',           weight: 22, category: 'ownership',  sortOrder: 9,  description: 'Owner mailing address differs from property address' },
     { signalType: 'out_of_state_owner', label: 'Out-of-State Owner',       weight: 15, category: 'ownership',  sortOrder: 10, description: 'Owner resides in a different state' },
     { signalType: 'tired_landlord',     label: 'Tired Landlord',           weight: 18, category: 'ownership',  sortOrder: 11, description: 'Landlord with multiple properties showing distress signals' },
 
     // FINANCIAL (4 signals)
     { signalType: 'bankruptcy',         label: 'Bankruptcy',               weight: 30, category: 'financial',  sortOrder: 12, description: 'Property owner has active bankruptcy filing' },
-    { signalType: 'high_equity',        label: 'High Equity (50%+)',       weight: 16, category: 'financial',  sortOrder: 13, description: 'Estimated equity exceeds 50% of property value' },
+    { signalType: 'high_equity',        label: 'High Equity',              weight: 16, category: 'financial',  sortOrder: 13, description: 'Estimated equity exceeds 50% of property value' },
     { signalType: 'free_and_clear',     label: 'Owned Free & Clear',       weight: 12, category: 'financial',  sortOrder: 14, description: 'No mortgage — owner has 100% equity' },
     { signalType: 'job_loss',           label: 'Job Loss / Income Drop',   weight: 20, category: 'financial',  sortOrder: 15, description: 'Owner experiencing job loss or significant income reduction' },
 

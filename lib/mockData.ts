@@ -8,10 +8,10 @@
 // ============================================================
 
 export const defaultScoringWeights = [
-  { signalType: 'pre_foreclosure', label: 'Pre-Foreclosure', category: 'automated', weight: 20, description: 'Property is in pre-foreclosure or has received NOD' },
+  { signalType: 'pre_foreclosure', label: 'Pre-Foreclosure / NOD', category: 'automated', weight: 20, description: 'Property is in pre-foreclosure or has received NOD' },
   { signalType: 'tax_delinquent', label: 'Tax Delinquent', category: 'automated', weight: 18, description: 'Property has delinquent taxes' },
   { signalType: 'probate', label: 'Probate / Estate', category: 'automated', weight: 20, description: 'Owner deceased, property in probate' },
-  { signalType: 'divorce', label: 'Divorce Filing', category: 'automated', weight: 16, description: 'Owner has a recent divorce filing' },
+  { signalType: 'divorce', label: 'Divorce – Recent Filing or Finalized', category: 'automated', weight: 16, description: 'Owner has a recent divorce filing' },
   { signalType: 'code_violation', label: 'Code Violation', category: 'automated', weight: 10, description: 'Property has municipal code violations' },
   { signalType: 'absentee_owner', label: 'Absentee Owner', category: 'automated', weight: 8, description: 'Owner does not live at the property' },
   { signalType: 'high_equity', label: 'High Equity', category: 'automated', weight: 12, description: 'Estimated equity above 40% of value' },
