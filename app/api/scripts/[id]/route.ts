@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-// PUT /api/scripts/[id] — update a script
-export async function PUT(
+// PATCH /api/scripts/[id] — update a script
+export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+
+    // Guard: cannot edit pre-built scripts
+    const existing = await prisma.callScript.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: 'Script not found' }, { status: 404 });
+    }
+    if (!existing.workspaceId) {
+      return NextResponse.json({ error: 'Cannot edit pre-built scripts' }, { status: 403 });
+    }
+
     const body = await request.json();
     const { title, body: scriptBody, description, isDefault, isActive } = body;
 
@@ -22,10 +32,10 @@ export async function PUT(
       },
     });
 
-    // If setting as default, unset others
+    // If setting as default, unset others in the same workspace
     if (isDefault) {
       await prisma.callScript.updateMany({
-        where: { id: { not: id } },
+        where: { id: { not: id }, workspaceId: existing.workspaceId },
         data: { isDefault: false },
       });
     }
@@ -43,6 +53,16 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+
+    // Guard: cannot delete pre-built scripts
+    const existing = await prisma.callScript.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: 'Script not found' }, { status: 404 });
+    }
+    if (!existing.workspaceId) {
+      return NextResponse.json({ error: 'Cannot delete pre-built scripts' }, { status: 403 });
+    }
+
     await prisma.callScript.update({
       where: { id },
       data: { isActive: false },

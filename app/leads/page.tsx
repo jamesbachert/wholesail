@@ -10,10 +10,11 @@ import {
   Send,
   Loader2,
   Plus,
+  Archive,
 } from 'lucide-react';
 import { AddLeadModal } from '@/components/leads/AddLeadModal';
 import { StreetViewButton } from '@/components/leads/StreetViewModal';
-import { useApi } from '@/lib/hooks';
+import { useApi, apiPatch } from '@/lib/hooks';
 import {
   getScoreColorHex,
   getStatusLabel,
@@ -29,6 +30,8 @@ type SortDir = 'asc' | 'desc';
 
 const statusFilters = ['ALL', 'NEW', 'CONTACTED', 'WARM', 'HOT', 'UNDER_CONTRACT', 'HANDED_OFF', 'CLOSED', 'ARCHIVE'];
 
+const FILTERS_STORAGE_KEY = 'wholesail-leads-filters';
+
 export default function LeadsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -38,6 +41,27 @@ export default function LeadsPage() {
   const [advancedFilters, setAdvancedFilters] = useState<Filters>(emptyFilters);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({ cities: [], zipCodes: [] });
   const [showAddLead, setShowAddLead] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const [filtersRestored, setFiltersRestored] = useState(false);
+
+  // Restore filters from localStorage after hydration
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FILTERS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.statusFilter) setStatusFilter(parsed.statusFilter);
+        if (parsed.advancedFilters) setAdvancedFilters({ ...emptyFilters, ...parsed.advancedFilters });
+      }
+    } catch {}
+    setFiltersRestored(true);
+  }, []);
+
+  // Persist filters to localStorage (only after initial restore)
+  useEffect(() => {
+    if (!filtersRestored) return;
+    localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify({ statusFilter, advancedFilters }));
+  }, [statusFilter, advancedFilters, filtersRestored]);
 
   // Build API URL with all filters
   const apiUrl = useMemo(() => {
@@ -114,6 +138,24 @@ export default function LeadsPage() {
     }
   };
 
+  const handleBulkArchive = async () => {
+    if (!confirm(`Archive ${selectedLeads.size} lead${selectedLeads.size > 1 ? 's' : ''}?`)) return;
+    setArchiving(true);
+    try {
+      await Promise.all(
+        Array.from(selectedLeads).map((leadId) =>
+          apiPatch(`/api/leads/${leadId}`, { status: 'ARCHIVE' })
+        )
+      );
+      setSelectedLeads(new Set());
+      refetch();
+    } catch (err) {
+      console.error('Failed to archive leads:', err);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
   const getProp = (lead: any) => lead.property || lead;
 
   const sortLabel = sortField === 'totalScore' ? 'score' :
@@ -139,6 +181,15 @@ export default function LeadsPage() {
               <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>{selectedLeads.size} selected</span>
               <button className="ws-btn-primary text-xs"><Send size={14} /> Hand Off</button>
               <button className="ws-btn-secondary text-xs"><Download size={14} /> Export</button>
+              <button
+                onClick={handleBulkArchive}
+                disabled={archiving}
+                className="ws-btn-secondary text-xs"
+                style={{ color: 'var(--warning)' }}
+              >
+                {archiving ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
+                Archive
+              </button>
             </>
           )}
           <button
@@ -221,10 +272,10 @@ export default function LeadsPage() {
             <button onClick={() => toggleSort('estimatedValue')} className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors">
               Value <ArrowUpDown size={12} />
             </button>
-            <div>Status</div>
             <button onClick={() => toggleSort('createdAt')} className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors">
               Created <ArrowUpDown size={12} />
             </button>
+            <div>Stage</div>
           </div>
 
           {/* Table Rows */}
@@ -277,12 +328,12 @@ export default function LeadsPage() {
                       <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{formatCurrency(prop.estimatedEquity || 0)} equity</p>
                     </div>
                     <div>
+                      <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{created ? timeAgo(created) : '—'}</p>
+                    </div>
+                    <div>
                       <span className={`ws-status ws-status-${lead.status.toLowerCase()} text-xs`} style={{ color: 'var(--text-secondary)' }}>
                         {getStatusLabel(lead.status)}
                       </span>
-                    </div>
-                    <div>
-                      <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{created ? timeAgo(created) : '—'}</p>
                     </div>
                   </div>
 

@@ -33,6 +33,14 @@ async function main() {
   });
   console.log(`✅ Region created: ${region.name}`);
 
+  // Create default workspace
+  const workspace = await prisma.workspace.upsert({
+    where: { slug: 'default' },
+    update: {},
+    create: { name: 'My Workspace', slug: 'default' },
+  });
+  console.log(`✅ Workspace created: ${workspace.name}`);
+
   // Create scoring weights
   const scoringWeights = [
     { signalType: 'pre_foreclosure', label: 'Pre-Foreclosure', category: 'automated', weight: 20, description: 'Property is in pre-foreclosure or has received NOD', sortOrder: 1 },
@@ -89,6 +97,142 @@ async function main() {
     });
   }
   console.log(`✅ ${connectorSlugs.length} connector region assignments created`);
+
+  // Pre-built Call Scripts (workspaceId = null → global)
+  const scripts = [
+    {
+      title: 'General Script',
+      slug: 'general',
+      isDefault: true,
+      sortOrder: 1,
+      description: 'Default cold-call script for any lead type',
+      body: `Hi, is this [Owner Name]?
+
+Great — my name is [Your Name], and I'm a local real estate investor here in the Lehigh Valley. I'm reaching out because I noticed your property at [Address] and wanted to see if you've ever considered selling it.
+
+[IF YES / MAYBE]:
+That's great to hear. I work with cash buyers who can close quickly — usually in 2 to 3 weeks — and we handle all the closing costs. There's no need to make any repairs or clean anything up. Would you be open to me taking a look and putting together a no-obligation offer?
+
+[IF NO]:
+No problem at all. Would it be okay if I checked back in a few months? Sometimes situations change and I want to make sure you know there's an option available if you ever need it.
+
+[IF HOSTILE / HANG UP]:
+I understand, thank you for your time. Have a great day.
+
+[OBJECTION: "How did you get my number?"]:
+Your property is part of the public record, and I use public data to find homeowners who might benefit from a quick, hassle-free sale. I'm not trying to pressure you — just wanted to make the offer available.
+
+[OBJECTION: "What would you offer?"]:
+It depends on the condition and the current market. I'd love to take a quick look — or even do a virtual walkthrough — and I can have a written offer to you within 24 hours. No obligation.
+
+[CLOSE]:
+Can we schedule a quick 15-minute visit this week? I'm flexible on timing — whatever works best for you.`,
+    },
+    {
+      title: 'Tax Delinquent / Financial Distress',
+      slug: 'tax-delinquent',
+      isDefault: false,
+      sortOrder: 2,
+      description: 'For leads with tax delinquency, liens, or financial distress signals',
+      body: `Hi, is this [Owner Name]?
+
+My name is [Your Name], and I'm a local real estate investor in the Lehigh Valley area. I'm reaching out because I work with homeowners who may be dealing with some property tax challenges, and I wanted to see if I could help.
+
+I know tax situations can feel overwhelming, but I've helped other homeowners in similar spots find a solution that works for everyone. In many cases, we can purchase the property quickly, take care of the outstanding taxes, and still put cash in your pocket at closing.
+
+[IF INTERESTED]:
+That's great. Here's how it works — I'd do a quick walkthrough of the property, put together a fair offer based on the current market, and if it works for you, we can close in as little as two weeks. We cover all the closing costs, and you don't need to make any repairs. Would it be okay to set up a quick visit this week?
+
+[IF HESITANT]:
+I completely understand. There's no pressure at all. A lot of the homeowners I've worked with felt the same way initially. Would it help if I just ran the numbers and sent you a no-obligation offer? That way you'd have all the information and can decide on your own timeline.
+
+[IF THEY MENTION TAX SALE / SHERIFF SALE]:
+I'm glad you brought that up. The good news is that there's still time to explore options before it gets to that point. If we can work something out, you'd walk away with cash and avoid the whole sale process. Can I ask — when is the next deadline you're facing?
+
+[CLOSE]:
+What does your schedule look like this week for a quick 15-minute visit? I'm flexible and can work around your availability.`,
+    },
+    {
+      title: 'Probate / Inherited Property',
+      slug: 'probate-inherited',
+      isDefault: false,
+      sortOrder: 3,
+      description: 'For leads where the owner is deceased or property was inherited',
+      body: `Hi, is this [Owner Name]?
+
+My name is [Your Name]. First, I want to say I'm sorry for your loss — I understand this is a difficult time.
+
+I'm reaching out because I work with families in the Lehigh Valley who have inherited property and are trying to figure out the best path forward. Sometimes keeping the property makes sense, but other times the taxes, maintenance, and estate process can feel like a lot to manage on top of everything else.
+
+If you've considered selling, I work with buyers who can make a fair cash offer quickly — and we handle all the logistics so you don't have to worry about repairs, cleaning, or dealing with showings.
+
+[IF INTERESTED]:
+I appreciate you being open to it. Here's what I'd suggest — let me take a quick look at the property, and I'll put together a no-obligation offer within 24 hours. If it works for you, great. If not, no hard feelings. Does sometime this week work for a quick visit?
+
+[IF NOT READY]:
+I completely understand. There's no rush at all. I'd be happy to check back in a few weeks when things settle down. In the meantime, if any questions come up about the property or the process, feel free to call me anytime.
+
+[IF MULTIPLE HEIRS]:
+That's really common. I've worked with families where there are multiple people involved in the decision. I'm happy to talk to everyone or put together information that you can share. The important thing is that everyone feels comfortable.
+
+[CLOSE]:
+Would it be okay if I followed up with you next week? Or if you'd prefer, I can send you some information by text or email — whatever's easiest for you.`,
+    },
+  ];
+
+  for (const script of scripts) {
+    await prisma.callScript.upsert({
+      where: { slug: script.slug },
+      update: { title: script.title, body: script.body, description: script.description, isDefault: script.isDefault, sortOrder: script.sortOrder },
+      create: { ...script, isActive: true },
+    });
+  }
+  console.log(`✅ ${scripts.length} call scripts seeded`);
+
+  // Pre-built SMS Templates (workspaceId = null → global)
+  const smsTemplates = [
+    {
+      title: 'Initial Outreach',
+      slug: 'initial-outreach-en',
+      language: 'en',
+      isDefault: true,
+      sortOrder: 1,
+      body: `Hi [Owner Name], this is [Your Name]. I'm a local real estate investor and I noticed your property at [Address]. I work with cash buyers who can close quickly with no repairs needed. Would you be open to a quick conversation about a no-obligation offer? Feel free to call or text me back anytime.`,
+    },
+    {
+      title: 'Follow-Up',
+      slug: 'follow-up-en',
+      language: 'en',
+      isDefault: false,
+      sortOrder: 2,
+      body: `Hi [Owner Name], this is [Your Name] following up about your property at [Address]. I wanted to check in and see if you've had any thoughts about selling. No pressure at all — just wanted to make sure the option is available if your situation has changed. Let me know if you'd like to chat!`,
+    },
+    {
+      title: 'Contacto Inicial',
+      slug: 'initial-outreach-es',
+      language: 'es',
+      isDefault: true,
+      sortOrder: 1,
+      body: `Hola [Owner Name], soy [Your Name]. Soy un inversionista de bienes raíces local y noté su propiedad en [Address]. Trabajo con compradores que pagan en efectivo y pueden cerrar rápidamente sin necesidad de reparaciones. ¿Estaría dispuesto/a a una conversación rápida sobre una oferta sin compromiso? No dude en llamarme o enviarme un mensaje en cualquier momento.`,
+    },
+    {
+      title: 'Seguimiento',
+      slug: 'follow-up-es',
+      language: 'es',
+      isDefault: false,
+      sortOrder: 2,
+      body: `Hola [Owner Name], soy [Your Name] dando seguimiento sobre su propiedad en [Address]. Quería ver si ha tenido alguna idea sobre la venta. Sin presión — solo quería asegurarme de que la opción esté disponible si su situación ha cambiado. ¡Avíseme si le gustaría conversar!`,
+    },
+  ];
+
+  for (const tpl of smsTemplates) {
+    await prisma.smsTemplate.upsert({
+      where: { slug: tpl.slug },
+      update: { title: tpl.title, body: tpl.body, language: tpl.language, isDefault: tpl.isDefault, sortOrder: tpl.sortOrder },
+      create: { ...tpl, isActive: true },
+    });
+  }
+  console.log(`✅ ${smsTemplates.length} SMS templates seeded`);
 
   console.log('🎉 Seed complete!');
 }

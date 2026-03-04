@@ -156,13 +156,13 @@ export async function crossReferenceEnrich(
       const rawData = record.rawData as Record<string, any>;
       const signalValue = signalDef.buildValue(rawData);
 
-      // Dedup check: for stackable types, match by value; for others, match by type
+      // Dedup check: for stackable types, match by active value; for others, match by type (any state)
       const existingSignal = signalDef.isStackable
         ? lead.signals.find(
             (s) => s.signalType === signalDef.signalType && s.value === signalValue && s.isActive
           )
         : lead.signals.find(
-            (s) => s.signalType === signalDef.signalType && s.isActive
+            (s) => s.signalType === signalDef.signalType
           );
 
       if (!existingSignal) {
@@ -199,6 +199,14 @@ export async function crossReferenceEnrich(
           value: signalValue,
           isActive: true,
         } as any);
+      } else if (!existingSignal.isActive) {
+        // Reactivate previously deactivated non-stackable signal
+        await prisma.leadSignal.update({
+          where: { id: (existingSignal as any).id },
+          data: { isActive: true, value: signalValue, points: basePoints },
+        });
+        existingSignal.isActive = true;
+        signalsAdded++;
       }
 
       // Non-stackable: only process the first matching record

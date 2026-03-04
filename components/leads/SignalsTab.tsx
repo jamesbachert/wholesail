@@ -61,7 +61,7 @@ const SIGNAL_DETAIL_CONFIG: Record<string, { detailType: InlineDetailType; dateP
   tax_delinquent:      { detailType: 'date_and_text', datePlaceholder: 'Delinquency date', textPlaceholder: 'Amount owed, years...' },
   divorce:             { detailType: 'date',          datePlaceholder: 'Filing date' },
   code_violation:      { detailType: 'text',          textPlaceholder: 'Violation type, case #, details...' },
-  rental_property:     { detailType: 'text',          textPlaceholder: 'License #, expiration, # of units...' },
+  rental_property:     { detailType: 'date_and_text', datePlaceholder: 'License Expires', textPlaceholder: 'Status, # of units, notes...' },
   liens_judgments:     { detailType: 'date_and_text', datePlaceholder: 'Filing date', textPlaceholder: 'Lien type, amount, holder...' },
   owner_deceased:      { detailType: 'date',          datePlaceholder: 'Date of death' },
   inherited:           { detailType: 'text',          textPlaceholder: 'Heir name, relationship...' },
@@ -617,7 +617,7 @@ export function SignalsTab({ leadId, signals: initialSignals, totalScore: initia
                         style={{ color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-elevated)' }}
                         onClick={() => toggleDetailExpanded(signalType)}
                       >
-                        {existing.eventDate && <span>{new Date(existing.eventDate).toLocaleDateString()}</span>}
+                        {existing.eventDate && <span>{signalType === 'rental_property' ? 'Expires ' : ''}{new Date(existing.eventDate).toLocaleDateString()}</span>}
                         {existing.eventDate && existing.value && <span> · </span>}
                         {existing.value && <span>{existing.value}</span>}
                       </div>
@@ -673,13 +673,20 @@ function InlineDetailEditor({
       style={{ backgroundColor: 'var(--bg-elevated)' }}
     >
       {(config.detailType === 'date' || config.detailType === 'date_and_text') && (
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="ws-input text-xs"
-          placeholder={config.datePlaceholder}
-        />
+        <div>
+          {config.datePlaceholder && (
+            <label className="block text-[10px] font-medium mb-0.5" style={{ color: 'var(--text-tertiary)' }}>
+              {config.datePlaceholder}
+            </label>
+          )}
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="ws-input text-xs"
+            placeholder={config.datePlaceholder}
+          />
+        </div>
       )}
       {(config.detailType === 'text' || config.detailType === 'date_and_text') && (
         <input

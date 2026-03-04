@@ -27,8 +27,9 @@ import {
   Check,
   X,
   Search,
+  Trash2,
 } from 'lucide-react';
-import { useApi, apiPost, apiPatch } from '@/lib/hooks';
+import { useApi, apiPost, apiPatch, apiDelete } from '@/lib/hooks';
 import {
   getScoreColorHex,
   getStatusLabel,
@@ -40,7 +41,21 @@ import {
 } from '@/lib/mockData';
 import { SignalsTab } from '@/components/leads/SignalsTab';
 import { CallDialog } from '@/components/leads/CallDialog';
+import { TextDialog } from '@/components/leads/TextDialog';
 import { StreetViewButton } from '@/components/leads/StreetViewModal';
+import { formatPhone, formatPhoneInput, stripPhone } from '@/lib/phone';
+
+const STATUS_OPTIONS = [
+  { value: 'NEW', label: 'New' },
+  { value: 'CONTACTED', label: 'Contacted' },
+  { value: 'WARM', label: 'Warm' },
+  { value: 'HOT', label: 'Hot' },
+  { value: 'UNDER_CONTRACT', label: 'Under Contract' },
+  { value: 'HANDED_OFF', label: 'Handed Off' },
+  { value: 'CLOSED', label: 'Closed' },
+  { value: 'ARCHIVE', label: 'Archived' },
+  { value: 'DO_NOT_CONTACT', label: 'Do Not Contact' },
+];
 
 export default function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -52,6 +67,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [newNote, setNewNote] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   const [showCallDialog, setShowCallDialog] = useState(false);
+  const [showTextDialog, setShowTextDialog] = useState(false);
   const [liveSignalCount, setLiveSignalCount] = useState<number | null>(null);
 
   // Refetch when navigating AWAY from signals tab (not on every click)
@@ -92,6 +108,22 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const activeSignals = signals.filter((s: any) => s.isActive !== false);
   const distressSignals = activeSignals.filter((s: any) => s.category === 'distress');
 
+  // Time-sensitive: only show if the deadline/event is in the future
+  const isTimeSensitiveCurrent = (() => {
+    if (!lead.isTimeSensitive) return false;
+    // Check explicit deadline field first
+    if (lead.timeSensitiveDeadline) {
+      return new Date(lead.timeSensitiveDeadline) >= new Date();
+    }
+    // Parse date from reason string like "Event scheduled: 2026-02-09"
+    const match = lead.timeSensitiveReason?.match(/(\d{4}-\d{2}-\d{2})/);
+    if (match) {
+      return new Date(match[1]) >= new Date(new Date().toISOString().split('T')[0]);
+    }
+    // No date to check — show it
+    return true;
+  })();
+
   const handleAddNote = async () => {
     if (!newNote.trim()) return;
     setSavingNote(true);
@@ -103,6 +135,15 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
       console.error('Failed to add note:', err);
     } finally {
       setSavingNote(false);
+    }
+  };
+
+  const handleStatusChange = async (newStatus: string) => {
+    try {
+      await apiPatch(`/api/leads/${id}`, { status: newStatus });
+      refetch();
+    } catch (err) {
+      console.error('Failed to update status:', err);
     }
   };
 
@@ -129,7 +170,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
               >
                 {lead.totalScore}
               </div>
-              {lead.isTimeSensitive && (
+              {isTimeSensitiveCurrent && (
                 <span className="ws-tag ws-tag-danger"><AlertTriangle size={12} /> Time Sensitive</span>
               )}
             </div>
@@ -145,18 +186,32 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
           <button onClick={() => setShowCallDialog(true)} className="ws-btn-primary text-xs">
             <Phone size={14} /> Call
           </button>
-          <button className="ws-btn-secondary text-xs"><MessageSquare size={14} /> Text</button>
+          <button onClick={() => setShowTextDialog(true)} className="ws-btn-secondary text-xs"><MessageSquare size={14} /> Text</button>
           <button className="ws-btn-secondary text-xs"><Mail size={14} /> Email</button>
           <button className="ws-btn-secondary text-xs"><Send size={14} /> Hand Off</button>
           <div className="flex-1" />
-          <span className={`ws-status ws-status-${lead.status.toLowerCase()} text-sm font-medium`} style={{ color: 'var(--text-primary)' }}>
-            {getStatusLabel(lead.status)}
-          </span>
+          <select
+            value={lead.status}
+            onChange={(e) => handleStatusChange(e.target.value)}
+            className={`ws-status ws-status-${lead.status.toLowerCase()} text-sm font-medium rounded-lg px-3 py-1.5 border cursor-pointer appearance-none bg-no-repeat`}
+            style={{
+              color: 'var(--text-primary)',
+              borderColor: 'var(--border-primary)',
+              backgroundColor: 'var(--bg-elevated)',
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+              backgroundPosition: 'right 8px center',
+              paddingRight: '28px',
+            }}
+          >
+            {STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
         </div>
       </div>
 
-      {/* Time Sensitive Banner */}
-      {lead.isTimeSensitive && lead.timeSensitiveReason && (
+      {/* Time Sensitive Banner — only show for current/future events */}
+      {isTimeSensitiveCurrent && lead.timeSensitiveReason && (
         <div className="ws-card p-4 border-l-4 ml-0 md:ml-11" style={{ borderLeftColor: 'var(--danger)' }}>
           <div className="flex items-start gap-2">
             <AlertTriangle size={16} style={{ color: 'var(--danger)' }} className="shrink-0 mt-0.5" />
@@ -182,9 +237,9 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
           >
             {tab === 'signals' && <Zap size={14} />}
             {tab}
-            {tab === 'signals' && (liveSignalCount ?? activeSignals.length) > 0 && (
+            {tab === 'signals' && (liveSignalCount ?? signals.length) > 0 && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold text-white" style={{ backgroundColor: 'var(--brand-deep)' }}>
-                {liveSignalCount ?? activeSignals.length}
+                {liveSignalCount ?? signals.length}
               </span>
             )}
             {tab === 'timeline' && contactHistory.length > 0 && (
@@ -230,6 +285,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             setNewNote={setNewNote}
             onAddNote={handleAddNote}
             saving={savingNote}
+            leadId={id}
+            refetch={refetch}
           />
         )}
       </div>
@@ -243,6 +300,21 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
           phoneNumber={property.ownerPhone || null}
           onClose={() => setShowCallDialog(false)}
           onCallLogged={() => refetch()}
+        />
+      )}
+
+      {/* Text Dialog */}
+      {showTextDialog && (
+        <TextDialog
+          leadId={lead.id}
+          ownerName={property.ownerName || ''}
+          address={property.address}
+          city={property.city}
+          state={property.state}
+          zipCode={property.zipCode}
+          phoneNumber={property.ownerPhone || null}
+          onClose={() => setShowTextDialog(false)}
+          onTextLogged={() => refetch()}
         />
       )}
     </div>
@@ -261,6 +333,8 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
   const [enrichConnectors, setEnrichConnectors] = useState<any[]>([]);
   const [enrichingSlug, setEnrichingSlug] = useState<string | null>(null);
   const [enrichResults, setEnrichResults] = useState<Record<string, { found: boolean; signalsAdded: number; error?: string }>>({});
+  const [selectedEnrich, setSelectedEnrich] = useState<Set<string>>(new Set());
+  const [enrichingSelected, setEnrichingSelected] = useState(false);
 
   useEffect(() => {
     if (property.zipCode) {
@@ -288,6 +362,45 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
       console.error('Enrichment check error:', err);
     } finally {
       setEnrichingSlug(null);
+    }
+  };
+
+  const handleEnrichSelected = async () => {
+    if (selectedEnrich.size === 0) return;
+    setEnrichingSelected(true);
+    try {
+      const res: any = await apiPost(`/api/leads/${leadId}/enrich`, {
+        connectorSlugs: Array.from(selectedEnrich),
+      });
+      if (res?.results) {
+        const newResults: Record<string, any> = {};
+        for (const result of res.results) {
+          newResults[result.slug] = { found: result.found, signalsAdded: result.signalsAdded, error: result.error };
+        }
+        setEnrichResults((prev) => ({ ...prev, ...newResults }));
+      }
+      setSelectedEnrich(new Set());
+      refetch();
+    } catch (err) {
+      console.error('Bulk enrichment error:', err);
+    } finally {
+      setEnrichingSelected(false);
+    }
+  };
+
+  const toggleEnrichSelect = (slug: string) => {
+    setSelectedEnrich((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug); else next.add(slug);
+      return next;
+    });
+  };
+
+  const toggleEnrichSelectAll = () => {
+    if (selectedEnrich.size === enrichConnectors.length) {
+      setSelectedEnrich(new Set());
+    } else {
+      setSelectedEnrich(new Set(enrichConnectors.map((c: any) => c.slug)));
     }
   };
 
@@ -425,7 +538,8 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
               </button>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {signals.map((s: any, i: number) => (
+              {/* Deduplicate pills: show each signal type once */}
+              {Array.from(new Map(signals.map((s: any) => [s.signalType, s])).values()).map((s: any, i: number) => (
                 <button
                   key={s.id || i}
                   onClick={onViewSignals}
@@ -494,9 +608,18 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
               <EditField label="Year Built" value={propForm.yearBuilt} onChange={(v) => setPropForm({ ...propForm, yearBuilt: v })} type="number" />
               <EditField label="County" value={propForm.county} onChange={(v) => setPropForm({ ...propForm, county: v })} />
               <DetailItem label="Zip Code" value={property.zipCode} />
-              <ToggleField label="Vacant" value={propForm.isVacant} onChange={(v) => setPropForm({ ...propForm, isVacant: v })} />
-              <ToggleField label="Absentee Owner" value={propForm.isAbsenteeOwner} onChange={(v) => setPropForm({ ...propForm, isAbsenteeOwner: v })} />
-              <TriStateField label="Rental Property" value={propForm.isRentalProperty} onChange={(v) => setPropForm({ ...propForm, isRentalProperty: v })} />
+              <div title="Update on the Signals tab" className="cursor-help">
+                <DetailItem label="Vacant" value={property.isVacant != null ? (property.isVacant ? 'Yes' : 'No') : '—'} highlight={property.isVacant} />
+                <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Edit on Signals tab</p>
+              </div>
+              <div title="Update on the Signals tab" className="cursor-help">
+                <DetailItem label="Absentee Owner" value={property.isAbsenteeOwner != null ? (property.isAbsenteeOwner ? 'Yes' : 'No') : '—'} highlight={property.isAbsenteeOwner} />
+                <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Edit on Signals tab</p>
+              </div>
+              <div title="Update on the Signals tab" className="cursor-help">
+                <DetailItem label="Rental Property" value={property.isRentalProperty != null ? (property.isRentalProperty ? 'Yes' : 'No') : '—'} highlight={property.isRentalProperty} />
+                <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Edit on Signals tab</p>
+              </div>
 
             </div>
           ) : (
@@ -510,7 +633,14 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
               <DetailItem label="Zip Code" value={property.zipCode || '—'} />
               <DetailItem label="Vacant" value={property.isVacant != null ? (property.isVacant ? 'Yes' : 'No') : '—'} highlight={property.isVacant} />
               <DetailItem label="Absentee Owner" value={property.isAbsenteeOwner != null ? (property.isAbsenteeOwner ? 'Yes' : 'No') : '—'} highlight={property.isAbsenteeOwner} />
-              <DetailItem label="Rental Property" value={property.isRentalProperty != null ? (property.isRentalProperty ? 'Yes' : 'No') : '—'} highlight={property.isRentalProperty} />
+              <div>
+                <DetailItem label="Rental Property" value={property.isRentalProperty != null ? (property.isRentalProperty ? 'Yes' : 'No') : '—'} highlight={property.isRentalProperty} />
+                {property.isRentalProperty && property.rentalLicenseExpiration && (
+                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                    Expires: {new Date(property.rentalLicenseExpiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -563,7 +693,16 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
           {editingOwner ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <EditField label="Name" value={ownerForm.ownerName} onChange={(v) => setOwnerForm({ ...ownerForm, ownerName: v })} />
-              <EditField label="Phone" value={ownerForm.ownerPhone} onChange={(v) => setOwnerForm({ ...ownerForm, ownerPhone: v })} type="tel" />
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>Phone</p>
+                <input
+                  type="tel"
+                  value={formatPhoneInput(ownerForm.ownerPhone)}
+                  onChange={(e) => setOwnerForm({ ...ownerForm, ownerPhone: stripPhone(e.target.value) })}
+                  className="ws-input text-sm py-1.5 px-2.5 w-full"
+                  placeholder="(555) 555-5555"
+                />
+              </div>
               <EditField label="Email" value={ownerForm.ownerEmail} onChange={(v) => setOwnerForm({ ...ownerForm, ownerEmail: v })} type="email" />
               <div className="md:col-span-2">
                 <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Mailing Address</p>
@@ -586,8 +725,8 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>Phone</p>
                 {property.ownerPhone ? (
-                  <a href={`tel:${property.ownerPhone}`} className="text-sm font-medium flex items-center gap-1.5 hover:underline" style={{ color: 'var(--brand-ocean)' }}>
-                    <Phone size={12} /> {property.ownerPhone}
+                  <a href={`tel:${stripPhone(property.ownerPhone)}`} className="text-sm font-medium flex items-center gap-1.5 hover:underline" style={{ color: 'var(--brand-ocean)' }}>
+                    <Phone size={12} /> {formatPhone(property.ownerPhone)}
                   </a>
                 ) : (
                   <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>—</p>
@@ -620,10 +759,37 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
         {/* Data Enrichment */}
         {enrichConnectors.length > 0 && (
           <div className="ws-card p-5">
-            <h3 className="text-sm font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-              <Search size={16} style={{ color: 'var(--brand-deep)' }} /> Data Enrichment
-            </h3>
+            <div className="flex items-center gap-2 mb-4">
+              <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                <Search size={16} style={{ color: 'var(--brand-deep)' }} /> Data Enrichment
+              </h3>
+            </div>
             <div className="space-y-2">
+              {/* Select All + Run Selected */}
+              <div
+                className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg border-b min-h-[46px]"
+                style={{ borderColor: 'var(--border-primary)' }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedEnrich.size === enrichConnectors.length && enrichConnectors.length > 0}
+                  onChange={toggleEnrichSelectAll}
+                  className="rounded"
+                />
+                <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                  {selectedEnrich.size === enrichConnectors.length ? 'Deselect All' : 'Select All'}
+                </span>
+                {selectedEnrich.size > 0 && (
+                  <button
+                    onClick={handleEnrichSelected}
+                    disabled={enrichingSelected}
+                    className="ws-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1 ml-auto"
+                  >
+                    {enrichingSelected ? <Loader2 size={10} className="animate-spin" /> : <Search size={10} />}
+                    Run Selected ({selectedEnrich.size})
+                  </button>
+                )}
+              </div>
               {enrichConnectors.map((connector: any) => {
                 const isChecking = enrichingSlug === connector.slug;
                 const result = enrichResults[connector.slug];
@@ -632,10 +798,16 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
                 return (
                   <div
                     key={connector.slug}
-                    className="flex items-center justify-between p-2.5 rounded-lg"
+                    className="flex items-center gap-2.5 p-2.5 rounded-lg"
                     style={{ backgroundColor: 'var(--bg-elevated)' }}
                   >
-                    <div className="flex items-center gap-2 min-w-0">
+                    <input
+                      type="checkbox"
+                      checked={selectedEnrich.has(connector.slug)}
+                      onChange={() => toggleEnrichSelect(connector.slug)}
+                      className="rounded shrink-0"
+                    />
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
                         {connector.name}
                       </span>
@@ -830,7 +1002,39 @@ function TimelineTab({ contactHistory }: { contactHistory: any[] }) {
 // NOTES TAB
 // ============================================================
 
-function NotesTab({ notes, newNote, setNewNote, onAddNote, saving }: any) {
+function NotesTab({ notes, newNote, setNewNote, onAddNote, saving, leadId, refetch }: any) {
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleEditNote = async (noteId: string) => {
+    if (!editContent.trim()) return;
+    setSavingEdit(true);
+    try {
+      await apiPatch(`/api/leads/${leadId}/notes`, { noteId, content: editContent.trim() });
+      setEditingNoteId(null);
+      refetch();
+    } catch (err) {
+      console.error('Failed to update note:', err);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    if (!confirm('Delete this note?')) return;
+    setDeletingId(noteId);
+    try {
+      await apiDelete(`/api/leads/${leadId}/notes?noteId=${noteId}`);
+      refetch();
+    } catch (err) {
+      console.error('Failed to delete note:', err);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="ws-card p-4">
@@ -859,9 +1063,57 @@ function NotesTab({ notes, newNote, setNewNote, onAddNote, saving }: any) {
             <div key={note.id} className="ws-card p-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>{formatDateTime(note.createdAt)}</span>
-                <button className="ws-btn-ghost text-xs p-1"><Pencil size={12} /></button>
+                <div className="flex items-center gap-1">
+                  {editingNoteId !== note.id && (
+                    <>
+                      <button
+                        onClick={() => { setEditingNoteId(note.id); setEditContent(note.content); }}
+                        className="ws-btn-ghost text-xs p-1"
+                        title="Edit note"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteNote(note.id)}
+                        disabled={deletingId === note.id}
+                        className="ws-btn-ghost text-xs p-1"
+                        style={{ color: 'var(--danger)' }}
+                        title="Delete note"
+                      >
+                        {deletingId === note.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-              <p className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>{note.content}</p>
+              {editingNoteId === note.id ? (
+                <div>
+                  <textarea
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    rows={3}
+                    className="ws-input resize-none text-sm mb-2"
+                  />
+                  <div className="flex items-center gap-2 justify-end">
+                    <button
+                      onClick={() => setEditingNoteId(null)}
+                      className="ws-btn-ghost text-xs"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => handleEditNote(note.id)}
+                      disabled={savingEdit || !editContent.trim()}
+                      className="ws-btn-primary text-xs"
+                    >
+                      {savingEdit ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                      Save
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>{note.content}</p>
+              )}
             </div>
           ))}
         </div>

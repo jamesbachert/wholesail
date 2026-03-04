@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { leadId, outcome, duration, notes, scriptUsed } = body;
+    const { leadId, outcome, duration, notes, scriptUsed, followUpDate } = body;
 
     if (!leadId || !outcome) {
       return NextResponse.json(
@@ -31,6 +31,11 @@ export async function POST(request: NextRequest) {
       lastActivityAt: now,
       lastContacted: now,
     };
+
+    // Set follow-up date if provided
+    if (followUpDate) {
+      updateData.nextFollowUp = new Date(followUpDate);
+    }
 
     // Auto-update status based on outcome
     if (outcome === 'CONNECTED' || outcome === 'INTERESTED') {
