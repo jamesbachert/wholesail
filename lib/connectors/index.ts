@@ -8,6 +8,7 @@ import { NorthamptonSheriffSalesConnector } from './pa/lehigh-valley/northampton
 import { AllentownCodeViolationsConnector } from './pa/lehigh-valley/allentown-code-violations';
 import { AllentownRentalLicensesConnector } from './pa/lehigh-valley/allentown-rental-licenses';
 import { AllentownAraBlightConnector } from './pa/lehigh-valley/allentown-ara-blight';
+import { BerksParcelAssessmentConnector, BerksCamaMasterConnector } from './pa/berks-lancaster';
 
 // ============================================================
 // CONNECTOR REGISTRY
@@ -33,6 +34,8 @@ const importConnectors: RegisteredConnector[] = [
   { connector: new LehighRepositoryConnector(), mode: 'import' },
   { connector: new NorthamptonSheriffSalesConnector(), mode: 'discovery' },
   { connector: new AllentownCodeViolationsConnector(), mode: 'discovery' },
+  // Pennsylvania — Berks-Lancaster
+  { connector: new BerksParcelAssessmentConnector(), mode: 'discovery' },
 ];
 
 const connectorMap = new Map<string, RegisteredConnector>(
@@ -55,6 +58,9 @@ export function getAllConnectorSlugs(): string[] {
 
 const lookupConnectors: LookupConnector[] = [
   new AllentownRentalLicensesConnector(),
+  // Pennsylvania — Berks-Lancaster
+  new BerksParcelAssessmentConnector(),
+  new BerksCamaMasterConnector(),
 ];
 
 // -- Discovery connectors (have their own sync() method, write to DiscoveredLead) --
@@ -208,5 +214,14 @@ export function getConnectorInfo() {
     region: dc.connector.regionSlug,
   }));
 
-  return [...importInfo, ...lookupInfo, ...discoveryInfo];
+  // Deduplicate by slug — dual-mode connectors (e.g. berks-parcel-assessment)
+  // appear in both importConnectors and lookupConnectors. Keep the first (import/discovery)
+  // entry and skip duplicates so Settings page doesn't render duplicate keys.
+  const seen = new Set<string>();
+  const all = [...importInfo, ...lookupInfo, ...discoveryInfo];
+  return all.filter((c) => {
+    if (seen.has(c.slug)) return false;
+    seen.add(c.slug);
+    return true;
+  });
 }

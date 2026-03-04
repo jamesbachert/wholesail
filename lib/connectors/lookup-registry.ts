@@ -1,6 +1,7 @@
 import { LookupConnector, LookupConnectorType } from './lookup-types';
 import { AllentownRentalLicensesConnector } from './pa/lehigh-valley/allentown-rental-licenses';
 import { AllentownCodeViolationsConnector } from './pa/lehigh-valley/allentown-code-violations';
+import { BerksParcelAssessmentConnector, BerksCamaMasterConnector } from './pa/berks-lancaster';
 
 // ============================================================
 // LOOKUP CONNECTOR REGISTRY
@@ -11,6 +12,9 @@ import { AllentownCodeViolationsConnector } from './pa/lehigh-valley/allentown-c
 const lookupConnectors: LookupConnector[] = [
   new AllentownRentalLicensesConnector(),
   new AllentownCodeViolationsConnector(),
+  // Pennsylvania — Berks-Lancaster
+  new BerksParcelAssessmentConnector(),
+  new BerksCamaMasterConnector(),
 ];
 
 const lookupConnectorMap = new Map<string, LookupConnector>(

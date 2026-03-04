@@ -98,6 +98,61 @@ async function main() {
   }
   console.log(`✅ ${connectorSlugs.length} connector region assignments created`);
 
+  // ============================================================
+  // BERKS-LANCASTER REGION
+  // ============================================================
+  const berksLancaster = await prisma.region.upsert({
+    where: { slug: 'berks-lancaster' },
+    update: {},
+    create: {
+      name: 'Berks-Lancaster',
+      slug: 'berks-lancaster',
+      state: 'PA',
+      counties: ['Berks', 'Lancaster'],
+      zipCodes: [
+        // Berks County
+        '19501','19503','19504','19506','19507','19508','19510','19511',
+        '19512','19516','19518','19520','19522','19523','19526','19529',
+        '19530','19533','19534','19535','19536','19539','19540','19541',
+        '19543','19544','19545','19547','19549','19550','19551','19555',
+        '19559','19560','19562','19564','19565','19567',
+        '19601','19602','19604','19605','19606','19607','19608',
+        '19609','19610','19611','19612',
+        // Lancaster County
+        '17501','17502','17505','17507','17508','17509','17512','17516',
+        '17517','17518','17519','17520','17522','17527','17528','17529',
+        '17532','17533','17534','17535','17536','17537','17538','17540',
+        '17543','17545','17547','17549','17550','17551','17552','17554',
+        '17555','17557','17560','17562','17563','17565','17566','17569',
+        '17572','17576','17578','17579','17580','17582','17584',
+        '17601','17602','17603',
+      ],
+      isActive: true,
+    },
+  });
+  console.log(`✅ Region: ${berksLancaster.name}`);
+
+  // Berks-Lancaster connector assignments
+  const berksConnectorSlugs = [
+    'berks-parcel-assessment',
+    'berks-cama-master',
+  ];
+
+  for (const slug of berksConnectorSlugs) {
+    await prisma.connectorRegionAssignment.upsert({
+      where: {
+        connectorSlug_regionId: { connectorSlug: slug, regionId: berksLancaster.id },
+      },
+      update: { isEnabled: true },
+      create: {
+        connectorSlug: slug,
+        regionId: berksLancaster.id,
+        isEnabled: true,
+      },
+    });
+  }
+  console.log(`✅ Connector region assignments: ${berksConnectorSlugs.length} connectors → ${berksLancaster.name}`);
+
   // Pre-built Call Scripts (workspaceId = null → global)
   const scripts = [
     {

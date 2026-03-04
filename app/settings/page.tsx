@@ -833,6 +833,12 @@ function WeightSlider({
 // ============================================================
 
 function RegionSettings() {
+  const { regions, loading } = useRegion();
+
+  const STATE_NAMES: Record<string, string> = {
+    PA: 'Pennsylvania', NJ: 'New Jersey', NY: 'New York', DE: 'Delaware', MD: 'Maryland',
+  };
+
   return (
     <div className="space-y-4">
       <div className="ws-card p-5">
@@ -840,19 +846,44 @@ function RegionSettings() {
           <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Active Regions</h3>
           <button className="ws-btn-secondary text-xs"><Plus size={14} /> Add Region</button>
         </div>
-        <div className="p-4 rounded-lg border-2" style={{ borderColor: 'var(--brand-deep)', backgroundColor: 'var(--bg-elevated)' }}>
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <MapPin size={16} style={{ color: 'var(--brand-deep)' }} />
-              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Greater Lehigh Valley</span>
-            </div>
-            <span className="ws-tag ws-tag-success text-[10px]">Active</span>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 size={20} className="animate-spin" style={{ color: 'var(--text-tertiary)' }} />
+            <span className="ml-2 text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading regions...</span>
           </div>
-          <div className="grid grid-cols-2 gap-2 mt-3">
-            <div><p className="text-[10px] font-semibold uppercase" style={{ color: 'var(--text-tertiary)' }}>State</p><p className="text-sm" style={{ color: 'var(--text-primary)' }}>Pennsylvania</p></div>
-            <div><p className="text-[10px] font-semibold uppercase" style={{ color: 'var(--text-tertiary)' }}>Counties</p><p className="text-sm" style={{ color: 'var(--text-primary)' }}>Lehigh, Northampton</p></div>
+        ) : regions.length === 0 ? (
+          <p className="text-sm py-4" style={{ color: 'var(--text-secondary)' }}>No regions configured yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {regions.map((region) => (
+              <div key={region.id} className="p-4 rounded-lg border-2" style={{ borderColor: 'var(--brand-deep)', backgroundColor: 'var(--bg-elevated)' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <MapPin size={16} style={{ color: 'var(--brand-deep)' }} />
+                    <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{region.name}</span>
+                  </div>
+                  <span className="ws-tag ws-tag-success text-[10px]">Active</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 mt-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase" style={{ color: 'var(--text-tertiary)' }}>State</p>
+                    <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{STATE_NAMES[region.state] || region.state}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase" style={{ color: 'var(--text-tertiary)' }}>Counties</p>
+                    <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{(region.counties as string[]).join(', ')}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase" style={{ color: 'var(--text-tertiary)' }}>Zip Codes</p>
+                    <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{(region.zipCodes as string[]).length}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
+        )}
+
         <button className="w-full mt-3 p-4 rounded-lg border-2 border-dashed flex items-center justify-center gap-2 transition-colors hover:bg-[var(--bg-elevated)]" style={{ borderColor: 'var(--border-primary)' }}>
           <Globe size={16} style={{ color: 'var(--text-tertiary)' }} />
           <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Add another region to scale your operation</span>

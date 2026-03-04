@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import {
   Search,
   ArrowUpDown,
@@ -20,6 +20,7 @@ import {
   Zap,
   FileText,
   Sparkles,
+  Bookmark,
 } from 'lucide-react';
 import { useApi } from '@/lib/hooks';
 import { useRegion } from '@/components/shared/RegionProvider';
@@ -71,15 +72,27 @@ function getCategoryColor(category: string): string {
 type SortField = 'discoveryScore' | 'sourceCount' | 'address' | 'lastSeenAt';
 type SortDir = 'asc' | 'desc';
 
-const STATUS_FILTERS = ['all', 'new', 'reviewed', 'in_pipeline', 'dismissed'];
+const STATUS_FILTERS = ['all', 'new', 'viewed', 'needs_review', 'dismissed'];
 
 function getStatusDisplay(status: string) {
   switch (status) {
     case 'new': return { label: 'New', variant: 'info' };
-    case 'reviewed': return { label: 'Reviewed', variant: 'neutral' };
+    case 'viewed': return { label: 'Viewed', variant: 'neutral' };
+    case 'needs_review': return { label: 'Needs Review', variant: 'warning' };
     case 'in_pipeline': return { label: 'In Pipeline', variant: 'success' };
     case 'dismissed': return { label: 'Dismissed', variant: 'neutral' };
     default: return { label: status, variant: 'neutral' };
+  }
+}
+
+function getStatusFilterLabel(status: string) {
+  switch (status) {
+    case 'all': return 'All';
+    case 'new': return 'New';
+    case 'viewed': return 'Viewed';
+    case 'needs_review': return 'Needs Review';
+    case 'dismissed': return 'Dismissed';
+    default: return status;
   }
 }
 
@@ -104,6 +117,9 @@ export default function DiscoveryPage() {
   const [dismissing, setDismissing] = useState(false);
   const [actionResult, setActionResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  // Track which leads have been auto-marked as viewed this session (avoid repeat API calls)
+  const viewedThisSession = useRef<Set<string>>(new Set());
+
   // Build API URL for discovered leads
   const leadsUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -126,6 +142,24 @@ export default function DiscoveryPage() {
   const enrichmentSources = (sourcesData?.enrichmentSources || []).sort((a: any, b: any) => a.name.localeCompare(b.name));
   const allSources = [...sources, ...enrichmentSources];
   const availableSources = leadsData?.filterOptions?.sources || [];
+
+  // Auto-mark a lead as "viewed" when expanded (fire-and-forget, no UI blocking)
+  const handleExpandRow = useCallback((leadId: string, currentStatus: string) => {
+    setExpandedRow((prev) => {
+      if (prev === leadId) return null; // collapsing
+      return leadId;
+    });
+
+    // Only auto-mark new leads — don't downgrade needs_review, dismissed, etc.
+    if (currentStatus === 'new' && !viewedThisSession.current.has(leadId)) {
+      viewedThisSession.current.add(leadId);
+      fetch('/api/discovery/leads/status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadIds: [leadId], status: 'viewed' }),
+      }).catch(() => {}); // fire-and-forget
+    }
+  }, []);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -164,12 +198,13 @@ export default function DiscoveryPage() {
       });
       const data = await res.json();
       setSyncResult(data);
-      refetchLeads();
-      refetchSources();
     } catch (err: any) {
       setSyncResult({ success: false, errorMessages: [err.message] });
     } finally {
       setSyncing(null);
+      // Always refetch — even if the request timed out, data may have been written
+      refetchLeads();
+      refetchSources();
     }
   }, [refetchLeads, refetchSources]);
 
@@ -185,12 +220,12 @@ export default function DiscoveryPage() {
       });
       const data = await res.json();
       setEnrichResult(data);
-      refetchLeads();
-      refetchSources();
     } catch (err: any) {
       setEnrichResult({ success: false, errorMessages: [err.message] });
     } finally {
       setEnriching(null);
+      refetchLeads();
+      refetchSources();
     }
   }, [refetchLeads, refetchSources]);
 
@@ -209,12 +244,12 @@ export default function DiscoveryPage() {
         });
       }
       setSyncResult({ success: true, total: enabledSources.length, message: `Synced ${enabledSources.length} sources` });
-      refetchLeads();
-      refetchSources();
     } catch (err: any) {
       setSyncResult({ success: false, errorMessages: [err.message] });
     } finally {
       setSyncing(null);
+      refetchLeads();
+      refetchSources();
     }
   }, [sources, disabledSlugs, refetchLeads, refetchSources]);
 
@@ -230,9 +265,13 @@ export default function DiscoveryPage() {
         body: JSON.stringify({ leadIds: Array.from(selectedLeads) }),
       });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to promote leads');
+      const parts = [`${data.promoted} promoted to pipeline`];
+      if (data.skipped) parts.push(`${data.skipped} skipped`);
+      if (data.errors?.length) parts.push(`${data.errors.length} failed`);
       setActionResult({
-        type: 'success',
-        message: `${data.promoted} promoted to pipeline${data.skipped ? `, ${data.skipped} skipped` : ''}`,
+        type: data.promoted > 0 ? 'success' : 'error',
+        message: parts.join(', ') + (data.errors?.length ? `: ${data.errors[0]}` : ''),
       });
       setSelectedLeads(new Set());
       refetchLeads();
@@ -671,7 +710,7 @@ export default function DiscoveryPage() {
             {STATUS_FILTERS.map((s) => (
               <button
                 key={s}
-                onClick={() => setStatusFilter(s)}
+                onClick={() => { setStatusFilter(s); setExpandedRow(null); }}
                 className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
                 style={
                   statusFilter === s
@@ -679,7 +718,7 @@ export default function DiscoveryPage() {
                     : { color: 'var(--text-secondary)', backgroundColor: 'var(--bg-elevated)' }
                 }
               >
-                {s === 'all' ? 'All' : getStatusDisplay(s).label}
+                {getStatusFilterLabel(s)}
               </button>
             ))}
           </div>
@@ -767,7 +806,7 @@ export default function DiscoveryPage() {
                   {/* Desktop Row */}
                   <div
                     className="hidden md:grid grid-cols-[40px_48px_1fr_28px_80px_180px_100px_90px] gap-3 px-5 py-3.5 items-center cursor-pointer"
-                    onClick={() => setExpandedRow(isExpanded ? null : lead.id)}
+                    onClick={() => handleExpandRow(lead.id, lead.status)}
                   >
                     <div onClick={(e) => e.stopPropagation()}>
                       <input type="checkbox" checked={selectedLeads.has(lead.id)} onChange={() => toggleSelect(lead.id)} className="rounded" />
@@ -833,7 +872,7 @@ export default function DiscoveryPage() {
                   {/* Mobile Card */}
                   <div
                     className="flex md:hidden items-start gap-3 px-4 py-3.5 cursor-pointer"
-                    onClick={() => setExpandedRow(isExpanded ? null : lead.id)}
+                    onClick={() => handleExpandRow(lead.id, lead.status)}
                   >
                     <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 mt-0.5" style={{ backgroundColor: getScoreColorHex(lead.discoveryScore) }}>
                       {Math.round(lead.discoveryScore)}
@@ -1013,6 +1052,11 @@ export default function DiscoveryPage() {
                                   body: JSON.stringify({ leadIds: [lead.id] }),
                                 });
                                 const data = await res.json();
+                                if (!res.ok) throw new Error(data.error || 'Failed to promote lead');
+                                if (data.promoted === 0) {
+                                  const reason = data.errors?.[0] || 'Lead could not be promoted';
+                                  throw new Error(reason);
+                                }
                                 setActionResult({ type: 'success', message: `${lead.address} added to pipeline` });
                                 refetchLeads();
                                 refetchSources();
@@ -1027,6 +1071,25 @@ export default function DiscoveryPage() {
                           >
                             <ArrowRight size={14} /> Add to Pipeline
                           </button>
+                          {lead.status !== 'needs_review' && (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  await fetch('/api/discovery/leads/status', {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ leadIds: [lead.id], status: 'needs_review' }),
+                                  });
+                                  setActionResult({ type: 'success', message: `${lead.address} flagged for review` });
+                                  refetchLeads();
+                                } catch {}
+                              }}
+                              className="ws-btn-secondary text-xs flex items-center gap-1.5"
+                            >
+                              <Bookmark size={14} /> Needs Review
+                            </button>
+                          )}
                           {lead.status !== 'dismissed' && (
                             <button
                               onClick={async (e) => {

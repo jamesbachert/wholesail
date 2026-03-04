@@ -3,6 +3,8 @@ import { getConnectorCoverage } from '@/lib/connectors/coverage-registry';
 import { crossReferenceEnrich, CrossReferenceResult } from '@/lib/connectors/cross-reference-engine';
 import { checkRentalLicense } from '@/lib/connectors/rental-lookup-engine';
 import { checkCodeViolations } from '@/lib/connectors/code-violation-lookup-engine';
+import { checkParcelAssessment } from '@/lib/connectors/parcel-assessment-lookup-engine';
+import { enrichWithCamaData } from '@/lib/connectors/cama-lookup-engine';
 
 // POST /api/leads/[id]/enrich
 // Runs selected connectors against a lead to enrich it with signals.
@@ -50,6 +52,32 @@ export async function POST(
               name: coverage.name,
               found: result.found,
               signalsAdded: result.found ? 1 : 0,
+              error: result.error,
+            });
+          } catch (err: any) {
+            results.push({ slug, name: coverage.name, found: false, signalsAdded: 0, error: err.message });
+          }
+        } else if (coverage.connectorKind === 'parcel_assessment') {
+          try {
+            const result = await checkParcelAssessment(id);
+            results.push({
+              slug,
+              name: coverage.name,
+              found: result.found,
+              signalsAdded: result.isAbsenteeOwner ? 1 : 0,
+              error: result.error,
+            });
+          } catch (err: any) {
+            results.push({ slug, name: coverage.name, found: false, signalsAdded: 0, error: err.message });
+          }
+        } else if (coverage.connectorKind === 'cama_data') {
+          try {
+            const result = await enrichWithCamaData(id);
+            results.push({
+              slug,
+              name: coverage.name,
+              found: result.found,
+              signalsAdded: 0, // CAMA is informational, no signals
               error: result.error,
             });
           } catch (err: any) {

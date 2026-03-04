@@ -15,6 +15,7 @@ import {
 import { AddLeadModal } from '@/components/leads/AddLeadModal';
 import { StreetViewButton } from '@/components/leads/StreetViewModal';
 import { useApi, apiPatch } from '@/lib/hooks';
+import { useRegion } from '@/components/shared/RegionProvider';
 import {
   getScoreColorHex,
   getStatusLabel,
@@ -33,6 +34,8 @@ const statusFilters = ['ALL', 'NEW', 'CONTACTED', 'WARM', 'HOT', 'UNDER_CONTRACT
 const FILTERS_STORAGE_KEY = 'wholesail-leads-filters';
 
 export default function LeadsPage() {
+  const { activeRegion } = useRegion();
+  const regionSlug = activeRegion?.slug || '';
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sortField, setSortField] = useState<SortField>('totalScore');
@@ -66,6 +69,7 @@ export default function LeadsPage() {
   // Build API URL with all filters
   const apiUrl = useMemo(() => {
     const params = new URLSearchParams();
+    if (regionSlug) params.set('region', regionSlug);
     params.set('sortBy', sortField);
     params.set('sortDir', sortDir);
 
@@ -90,7 +94,7 @@ export default function LeadsPage() {
     if (advancedFilters.minCodeViolations) params.set('minCodeViolations', advancedFilters.minCodeViolations);
 
     return `/api/leads?${params.toString()}`;
-  }, [sortField, sortDir, statusFilter, searchQuery, advancedFilters]);
+  }, [regionSlug, sortField, sortDir, statusFilter, searchQuery, advancedFilters]);
 
   const { data: liveData, loading, refetch } = useApi<any>(apiUrl);
 

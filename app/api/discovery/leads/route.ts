@@ -25,6 +25,9 @@ export async function GET(request: NextRequest) {
 
     if (status) {
       where.status = status;
+    } else {
+      // By default, exclude promoted leads — they live in the pipeline now
+      where.status = { not: 'in_pipeline' };
     }
 
     if (search) {

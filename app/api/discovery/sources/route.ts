@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getDiscoveryCapableConnectors, getLookupConnectorsForRegion } from '@/lib/connectors';
 
+// Context-specific descriptions for dual-mode connectors.
+// When a connector appears in both Lead Discovery and Data Enrichment,
+// we override the generic description so the user understands each role.
+const DISCOVERY_DESCRIPTIONS: Record<string, string> = {
+  'berks-parcel-assessment': 'Bulk-imports residential parcels from Berks County GIS to discover new leads',
+};
+
+const ENRICHMENT_DESCRIPTIONS: Record<string, string> = {
+  'berks-parcel-assessment': 'Looks up individual leads to find assessment data and detect absentee owners',
+};
+
 // GET /api/discovery/sources?region=lehigh-valley — data source status for a region
 // Returns discovery connectors (mode: 'discovery' or 'both') + enrichment connectors (lookup)
 export async function GET(request: NextRequest) {
@@ -30,7 +41,7 @@ export async function GET(request: NextRequest) {
         return {
           name: connector.name,
           slug: connector.slug,
-          description: connector.description,
+          description: DISCOVERY_DESCRIPTIONS[connector.slug] || connector.description,
           regionSlug: connector.regionSlug,
           mode: connector.mode,
           type: connector.type,
@@ -70,7 +81,7 @@ export async function GET(request: NextRequest) {
         return {
           name: connector.name,
           slug: connector.slug,
-          description: connector.description,
+          description: ENRICHMENT_DESCRIPTIONS[connector.slug] || connector.description,
           regionSlug: connector.regionSlug,
           mode: 'enrichment' as const,
           type: connector.type,

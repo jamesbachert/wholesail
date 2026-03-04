@@ -153,6 +153,9 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
 
+    // Region filter
+    const regionSlug = searchParams.get('region');
+
     // Basic filters
     const status = searchParams.get('status');
     const search = searchParams.get('search');
@@ -184,6 +187,11 @@ export async function GET(request: NextRequest) {
     // Build where clause
     const where: any = {};
     const propertyWhere: any = {};
+
+    // Region filter — scope leads to the active region
+    if (regionSlug) {
+      where.region = { slug: regionSlug };
+    }
 
     // Status filter
     if (status && status !== 'ALL') {
@@ -307,9 +315,14 @@ export async function GET(request: NextRequest) {
       leads = leads.slice(skip, skip + limit);
     }
 
-    // Get distinct cities and zip codes for filter dropdowns
+    // Get distinct cities and zip codes for filter dropdowns (scoped to region)
+    // Use `is` for one-to-one relation filtering (Prisma doesn't allow mixing isNot with nested relations)
+    const filterWhere: any = { lead: { isNot: null } };
+    if (regionSlug) {
+      filterWhere.lead = { is: { region: { slug: regionSlug } } };
+    }
     const filterOptions = await prisma.property.findMany({
-  where: { lead: { isNot: null } },
+  where: filterWhere,
   select: { city: true, zipCode: true },
 });
 

@@ -5,7 +5,7 @@
 // Unlike import connectors, they don't create new leads.
 // ============================================================
 
-export type LookupConnectorType = 'rental_license' | 'code_violation';
+export type LookupConnectorType = 'rental_license' | 'code_violation' | 'parcel_assessment' | 'cama_data';
 
 export interface RentalLicenseLookupResult {
   found: boolean;
@@ -29,7 +29,48 @@ export interface CodeViolationLookupResult {
   rawData: Record<string, any>;
 }
 
-export type LookupResult = RentalLicenseLookupResult | CodeViolationLookupResult;
+export interface ParcelAssessmentLookupResult {
+  found: boolean;
+  parcelId?: string;
+  ownerName?: string;
+  ownerMailingAddress?: string;  // Street portion only (parsed)
+  ownerMailingFull?: string;     // Full mailing string (unparsed, for reference)
+  ownerCity?: string;
+  ownerState?: string;
+  ownerZip?: string;
+  siteAddress?: string;
+  municipality?: string;
+  landUseCode?: string;
+  landUseDescription?: string;
+  propertyType?: string;         // Mapped human-readable type (e.g. "Single Family")
+  propertyClass?: string;
+  propertyDescription?: string;  // e.g. "2 STORY BRICK/MASONRY"
+  assessedValue?: number;
+  assessedLandValue?: number;
+  assessedBuildingValue?: number;
+  lastSaleDate?: string;
+  lastSalePrice?: number;
+  deedBook?: string;
+  deedPage?: string;
+  acreage?: number;
+  isAbsenteeOwner?: boolean;
+  isHomestead?: boolean;
+  rawData: Record<string, any>;
+}
+
+export interface CamaDataLookupResult {
+  found: boolean;
+  parcelId?: string;
+  ownerName?: string;
+  coOwner?: string;
+  instrumentNumber?: string;
+  taxAccount?: string;
+  className?: string;
+  cleanAndGreenDate?: string;
+  rawData: Record<string, any>;
+}
+
+export type LookupResult = RentalLicenseLookupResult | CodeViolationLookupResult | ParcelAssessmentLookupResult | CamaDataLookupResult;
 
 export interface LookupConnector {
   name: string;

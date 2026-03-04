@@ -94,7 +94,7 @@ model Property {
   isAbsenteeOwner Boolean  @default(false)
   ownershipLength Int?
 
-  isVacant        Boolean  @default(false)
+  isVacant        Boolean? // null = unknown, true = confirmed vacant, false = confirmed occupied
   isRentalProperty Boolean? // Yes/No — can be set by connector (e.g. Allentown rental license DB) or manually
   rentalLicenseExpiration DateTime? // When the rental license expires (from lookup connector)
   rentalLicenseNumber    String?   // License number from the rental license database
@@ -484,7 +484,7 @@ model DiscoveredLead {
   discoveryScore    Float     @default(0)
   sourceCount       Int       @default(1)  // Number of distinct connectors that contributed signals
   sourceRegion      String    // e.g. "lehigh-valley"
-  status            String    @default("new") // "new" | "reviewed" | "in_pipeline" | "dismissed"
+  status            String    @default("new") // "new" | "viewed" | "needs_review" | "in_pipeline" | "dismissed"
   externalId        String?   // ObjectID from source system
   rawData           Json?
 

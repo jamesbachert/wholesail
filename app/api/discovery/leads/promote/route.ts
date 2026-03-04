@@ -19,6 +19,7 @@ const SIGNAL_MAP: Record<string, SignalMapping> = {
   sheriff_sale:           { pipelineSignalType: 'pre_foreclosure' },
   code_violation:         { pipelineSignalType: 'code_violation' },
   tax_delinquent:         { pipelineSignalType: 'tax_delinquent' },
+  absentee_owner:         { pipelineSignalType: 'absentee_owner' },
 };
 
 // Conditional mappings checked via signal details/value
@@ -62,6 +63,7 @@ const FALLBACK_WEIGHTS: Record<string, { label: string; weight: number; category
   fire_flood_damage:    { label: 'Fire / Flood Damage',   weight: 20, category: 'condition' },
   pre_foreclosure:      { label: 'Pre-Foreclosure',       weight: 30, category: 'distress' },
   tax_delinquent:       { label: 'Tax Delinquent',        weight: 15, category: 'financial' },
+  absentee_owner:       { label: 'Absentee Owner',        weight: 22, category: 'ownership' },
 };
 
 /**
@@ -165,6 +167,50 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
+        // Derive county from region (first county in the list)
+        const county = (region.counties as string[])?.[0] || region.state;
+
+        // ============================================================
+        // Extract property data from rawData
+        // rawData is connector-agnostic: any connector can populate
+        // these standardized keys and they'll flow into the Property.
+        // ============================================================
+        const raw = (discovered.rawData as Record<string, any>) || {};
+
+        const isAbsentee = raw.isAbsenteeOwner === true || discovered.signals.some(
+          (s) => s.signalType === 'absentee_owner'
+        );
+
+        // Parse mailing address — supports "STREET  CITY STATE ZIP" format (double-space separator)
+        let ownerMailingAddress: string | undefined;
+        let ownerCity: string | undefined;
+        let ownerState: string | undefined;
+        let ownerZip: string | undefined;
+        if (raw.mailingAddress) {
+          const fullMailing = (raw.mailingAddress as string).trim();
+          const dblSpaceIdx = fullMailing.indexOf('  ');
+          if (dblSpaceIdx > 0) {
+            ownerMailingAddress = fullMailing.substring(0, dblSpaceIdx).trim();
+            const rest = fullMailing.substring(dblSpaceIdx).trim();
+            const zipMatch = rest.match(/(\d{5}(?:-\d{4})?)$/);
+            if (zipMatch) {
+              ownerZip = zipMatch[1];
+              const beforeZip = rest.substring(0, rest.length - zipMatch[0].length).trim();
+              const stateMatch = beforeZip.match(/\s([A-Z]{2})$/);
+              if (stateMatch) {
+                ownerState = stateMatch[1];
+                ownerCity = beforeZip.substring(0, beforeZip.length - stateMatch[0].length).trim();
+              } else {
+                ownerCity = beforeZip;
+              }
+            } else {
+              ownerCity = rest;
+            }
+          } else {
+            ownerMailingAddress = fullMailing;
+          }
+        }
+
         // Create or reuse property
         const property = existingProperty || await prisma.property.create({
           data: {
@@ -172,11 +218,23 @@ export async function POST(request: NextRequest) {
             city: discovered.city,
             state: discovered.state,
             zipCode: discovered.zipCode || '',
-            county: 'Lehigh',
-            propertyType: discovered.propertyType || undefined,
+            county,
+            // Property details
+            propertyType: raw.landUseDescription || discovered.propertyType || undefined,
             yearBuilt: discovered.yearBuilt || undefined,
+            lotSize: raw.acreage ? Number(raw.acreage) : undefined,
             latitude: discovered.latitude || undefined,
             longitude: discovered.longitude || undefined,
+            // Owner info
+            ownerName: raw.ownerName || undefined,
+            ownerMailingAddress,
+            ownerCity,
+            ownerState,
+            ownerZip,
+            isAbsenteeOwner: isAbsentee,
+            // Valuation
+            assessedValue: raw.assessedTotal ? Number(raw.assessedTotal) : undefined,
+            // Flags
             hasCodeViolations: discovered.signals.some(
               (s) => ['blight_certified', 'blight_determined', 'code_violation'].includes(s.signalType)
             ),
