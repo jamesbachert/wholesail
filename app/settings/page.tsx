@@ -1330,6 +1330,73 @@ function AccountSettings() {
           User accounts and invite links are coming soon. For now, all users on the same deployment share workspace data.
         </p>
       </div>
+
+      <DealDefaultsSettings />
+    </div>
+  );
+}
+
+// ============================================================
+// DEAL DEFAULTS SETTINGS
+// ============================================================
+
+function DealDefaultsSettings() {
+  const [maoPercentage, setMaoPercentage] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('wholesail-mao-percentage');
+      return saved ? Number(saved) : 70;
+    }
+    return 70;
+  });
+  const [inputValue, setInputValue] = useState(String(maoPercentage));
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = () => {
+    const val = Math.min(100, Math.max(1, parseInt(inputValue) || 70));
+    setMaoPercentage(val);
+    setInputValue(String(val));
+    localStorage.setItem('wholesail-mao-percentage', String(val));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <div className="ws-card p-5">
+      <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+        Deal Defaults
+      </h3>
+      <p className="text-xs mt-1 mb-4" style={{ color: 'var(--text-secondary)' }}>
+        Default values used in deal analysis calculations across all leads.
+      </p>
+
+      <div className="flex items-end gap-3">
+        <div className="flex-1 max-w-xs">
+          <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>
+            MAO Rule (% of ARV)
+          </p>
+          <p className="text-[10px] mb-2" style={{ color: 'var(--text-secondary)' }}>
+            Maximum Allowable Offer = ARV × this percentage − repair costs. Industry standard is 70%.
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+              className="ws-input text-sm py-1.5 px-2.5 w-20 text-center"
+            />
+            <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>%</span>
+          </div>
+        </div>
+        <button
+          onClick={handleSave}
+          className="ws-btn-primary text-xs px-3 py-1.5 flex items-center gap-1"
+        >
+          {saved ? <><Check size={12} /> Saved</> : 'Save'}
+        </button>
+      </div>
     </div>
   );
 }

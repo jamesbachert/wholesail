@@ -34,17 +34,18 @@ export const defaultScoringWeights = [
 // ============================================================
 
 export function getScoreColor(score: number): string {
-  if (score >= 80) return 'hot';
-  if (score >= 60) return 'warm';
-  if (score >= 40) return 'medium';
+  if (score >= 100) return 'priority';
+  if (score >= 70) return 'hot';
+  if (score >= 40) return 'warm';
   return 'cold';
 }
 
 export function getScoreColorHex(score: number): string {
-  if (score >= 80) return '#DC2626'; // hot — red
-  if (score >= 60) return '#EA580C'; // warm — orange
-  if (score >= 40) return '#F59E0B'; // medium — amber
-  return '#94A3B8'; // cold — gray
+  if (score >= 100) return '#DC2626'; // priority — red
+  if (score >= 70) return '#EA580C'; // hot — orange
+  if (score >= 40) return '#F59E0B'; // warm — amber
+  if (score >= 20) return '#3B82F6'; // cold — blue
+  return '#64748B'; // minimal — slate
 }
 
 export function getStatusLabel(status: string): string {

@@ -22,11 +22,13 @@ export async function GET(
 }
 
 const ALLOWED_PROPERTY_FIELDS = new Set([
-  'propertyType', 'bedrooms', 'bathrooms', 'sqft', 'yearBuilt', 'county',
+  'address', 'city', 'state', 'zipCode', 'county',
+  'propertyType', 'bedrooms', 'bathrooms', 'sqft', 'yearBuilt',
   'isVacant', 'isAbsenteeOwner', 'isRentalProperty',
   'rentalLicenseExpiration', 'rentalLicenseNumber',
   'ownerName', 'ownerPhone', 'ownerPhone2', 'ownerEmail',
   'ownerMailingAddress', 'ownerCity', 'ownerState', 'ownerZip',
+  'estimatedValue', 'estimatedRepairCost', 'offerPrice',
 ]);
 
 export async function PATCH(

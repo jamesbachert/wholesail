@@ -133,9 +133,10 @@ export async function checkParcelAssessment(leadId: string): Promise<ParcelAsses
         },
       });
     } else {
+      // Re-lock and re-mark as automated since this is a fresh enrichment result
       await prisma.leadSignal.update({
         where: { id: existingSignal.id },
-        data: { value: signalValue, points },
+        data: { value: signalValue, isActive: true, isLocked: true, isAutomated: true, points },
       });
     }
 

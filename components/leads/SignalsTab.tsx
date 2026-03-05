@@ -155,12 +155,15 @@ export function SignalsTab({ leadId, signals: initialSignals, totalScore: initia
   const [loading, setLoading] = useState<string | null>(null);
   const [expandedDetails, setExpandedDetails] = useState<Set<string>>(new Set());
 
-  // Sync from parent when props change
+  // Sync from parent when props change (e.g. after enrichment refetch)
   useEffect(() => {
     setLocalSignals(initialSignals);
     setLocalScore(initialScore);
     setLocalPriority(initialPriority);
-  }, [initialSignals, initialScore, initialPriority]);
+    // Update the tab badge count to match the fresh data
+    const activeCount = initialSignals.filter((s: Signal) => s.isActive).length;
+    onCountChange?.(activeCount);
+  }, [initialSignals, initialScore, initialPriority]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch scoring weights
   useEffect(() => {

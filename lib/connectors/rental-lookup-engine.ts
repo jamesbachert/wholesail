@@ -85,9 +85,10 @@ export async function checkRentalLicense(leadId: string): Promise<RentalCheckRes
       });
     } else {
       // Reactivate and update existing signal (handles previously deactivated signals)
+      // Re-lock and re-mark as automated since this is a fresh enrichment result
       await prisma.leadSignal.update({
         where: { id: existingSignal.id },
-        data: { value: signalValue, isActive: true, points, eventDate: result.expirationDate ?? null },
+        data: { value: signalValue, isActive: true, isLocked: true, isAutomated: true, points, eventDate: result.expirationDate ?? null },
       });
     }
 

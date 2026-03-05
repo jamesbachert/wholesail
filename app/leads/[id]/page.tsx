@@ -28,6 +28,8 @@ import {
   X,
   Search,
   Trash2,
+  Calculator,
+  ChevronDown,
 } from 'lucide-react';
 import { useApi, apiPost, apiPatch, apiDelete } from '@/lib/hooks';
 import {
@@ -69,6 +71,14 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [showCallDialog, setShowCallDialog] = useState(false);
   const [showTextDialog, setShowTextDialog] = useState(false);
   const [liveSignalCount, setLiveSignalCount] = useState<number | null>(null);
+
+  // Keep signal count badge in sync with fresh lead data (e.g. after enrichment refetch)
+  useEffect(() => {
+    if (lead?.signals) {
+      const count = lead.signals.filter((s: any) => s.isActive !== false).length;
+      setLiveSignalCount(count);
+    }
+  }, [lead]);
 
   // Refetch when navigating AWAY from signals tab (not on every click)
   const handleTabChange = (tab: typeof activeTab) => {
@@ -406,15 +416,16 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
 
   // Property Details edit state
   const [propForm, setPropForm] = useState({
+    address: property.address || '',
+    city: property.city || '',
+    state: property.state || '',
+    zipCode: property.zipCode || '',
+    county: property.county || '',
     propertyType: property.propertyType || '',
     bedrooms: property.bedrooms != null ? String(property.bedrooms) : '',
     bathrooms: property.bathrooms != null ? String(property.bathrooms) : '',
     sqft: property.sqft != null ? String(property.sqft) : '',
     yearBuilt: property.yearBuilt != null ? String(property.yearBuilt) : '',
-    county: property.county || '',
-    isVacant: property.isVacant ?? false,
-    isAbsenteeOwner: property.isAbsenteeOwner ?? false,
-    isRentalProperty: property.isRentalProperty ?? null,
   });
 
   // Owner Info edit state
@@ -433,15 +444,16 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
     try {
       await apiPatch(`/api/leads/${leadId}`, {
         property: {
+          address: propForm.address || null,
+          city: propForm.city || null,
+          state: propForm.state || null,
+          zipCode: propForm.zipCode || null,
+          county: propForm.county || null,
           propertyType: propForm.propertyType || null,
           bedrooms: propForm.bedrooms ? parseInt(propForm.bedrooms) : null,
           bathrooms: propForm.bathrooms ? parseFloat(propForm.bathrooms) : null,
           sqft: propForm.sqft ? parseInt(propForm.sqft) : null,
           yearBuilt: propForm.yearBuilt ? parseInt(propForm.yearBuilt) : null,
-          county: propForm.county || null,
-          isVacant: propForm.isVacant,
-          isAbsenteeOwner: propForm.isAbsenteeOwner,
-          isRentalProperty: propForm.isRentalProperty,
         },
       });
       setEditingProperty(false);
@@ -478,15 +490,16 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
 
   const cancelPropertyEdit = () => {
     setPropForm({
+      address: property.address || '',
+      city: property.city || '',
+      state: property.state || '',
+      zipCode: property.zipCode || '',
+      county: property.county || '',
       propertyType: property.propertyType || '',
       bedrooms: property.bedrooms != null ? String(property.bedrooms) : '',
       bathrooms: property.bathrooms != null ? String(property.bathrooms) : '',
       sqft: property.sqft != null ? String(property.sqft) : '',
       yearBuilt: property.yearBuilt != null ? String(property.yearBuilt) : '',
-      county: property.county || '',
-      isVacant: property.isVacant ?? false,
-      isAbsenteeOwner: property.isAbsenteeOwner ?? false,
-      isRentalProperty: property.isRentalProperty ?? null,
     });
     setEditingProperty(false);
   };
@@ -502,6 +515,60 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
       ownerZip: property.ownerZip || '',
     });
     setEditingOwner(false);
+  };
+
+  // Deal Analysis edit state
+  const [editingDeal, setEditingDeal] = useState(false);
+  const [showReference, setShowReference] = useState(false);
+  const [dealForm, setDealForm] = useState({
+    estimatedValue: property.estimatedValue != null ? String(property.estimatedValue) : '',
+    estimatedRepairCost: property.estimatedRepairCost != null ? String(property.estimatedRepairCost) : '',
+    offerPrice: property.offerPrice != null ? String(property.offerPrice) : '',
+  });
+
+  // MAO percentage — load from localStorage, default 70%
+  const [maoPercentage] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('wholesail-mao-percentage');
+      return saved ? Number(saved) : 70;
+    }
+    return 70;
+  });
+
+  // Calculate MAO and profit from current values (works in both view and edit mode)
+  const calcArv = editingDeal ? (dealForm.estimatedValue ? parseFloat(dealForm.estimatedValue) : null) : property.estimatedValue;
+  const calcRepairs = editingDeal ? (dealForm.estimatedRepairCost ? parseFloat(dealForm.estimatedRepairCost) : null) : property.estimatedRepairCost;
+  const calcOffer = editingDeal ? (dealForm.offerPrice ? parseFloat(dealForm.offerPrice) : null) : property.offerPrice;
+  const calcMao = calcArv != null && calcRepairs != null ? calcArv * (maoPercentage / 100) - calcRepairs : null;
+  const calcDealEquity = calcArv != null && calcRepairs != null && calcOffer != null ? calcArv - calcRepairs - calcOffer : null;
+  const calcAssignmentFee = calcMao != null && calcOffer != null ? calcMao - calcOffer : null;
+
+  const handleSaveDeal = async () => {
+    setSaving(true);
+    try {
+      await apiPatch(`/api/leads/${leadId}`, {
+        property: {
+          estimatedValue: dealForm.estimatedValue ? parseFloat(dealForm.estimatedValue) : null,
+          estimatedRepairCost: dealForm.estimatedRepairCost ? parseFloat(dealForm.estimatedRepairCost) : null,
+          offerPrice: dealForm.offerPrice ? parseFloat(dealForm.offerPrice) : null,
+        },
+      });
+      setEditingDeal(false);
+      refetch();
+    } catch (err) {
+      console.error('Failed to update deal analysis:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancelDealEdit = () => {
+    setDealForm({
+      estimatedValue: property.estimatedValue != null ? String(property.estimatedValue) : '',
+      estimatedRepairCost: property.estimatedRepairCost != null ? String(property.estimatedRepairCost) : '',
+      offerPrice: property.offerPrice != null ? String(property.offerPrice) : '',
+    });
+    setEditingDeal(false);
   };
 
   // Helper to format mailing address
@@ -559,7 +626,7 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
 
         {/* Property Details */}
         <div className="ws-card p-5">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-1">
               <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
                 <Home size={16} style={{ color: 'var(--brand-deep)' }} /> Property Details
@@ -598,65 +665,259 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
               </div>
             )}
           </div>
-
           {editingProperty ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <EditField label="Type" value={propForm.propertyType} onChange={(v) => setPropForm({ ...propForm, propertyType: v })} />
-              <EditField label="Bedrooms" value={propForm.bedrooms} onChange={(v) => setPropForm({ ...propForm, bedrooms: v })} type="number" />
-              <EditField label="Bathrooms" value={propForm.bathrooms} onChange={(v) => setPropForm({ ...propForm, bathrooms: v })} type="number" />
-              <EditField label="Sq Ft" value={propForm.sqft} onChange={(v) => setPropForm({ ...propForm, sqft: v })} type="number" />
-              <EditField label="Year Built" value={propForm.yearBuilt} onChange={(v) => setPropForm({ ...propForm, yearBuilt: v })} type="number" />
-              <EditField label="County" value={propForm.county} onChange={(v) => setPropForm({ ...propForm, county: v })} />
-              <DetailItem label="Zip Code" value={property.zipCode} />
-              <div title="Update on the Signals tab" className="cursor-help">
-                <DetailItem label="Vacant" value={property.isVacant != null ? (property.isVacant ? 'Yes' : 'No') : '—'} highlight={property.isVacant} />
-                <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Edit on Signals tab</p>
-              </div>
-              <div title="Update on the Signals tab" className="cursor-help">
-                <DetailItem label="Absentee Owner" value={property.isAbsenteeOwner != null ? (property.isAbsenteeOwner ? 'Yes' : 'No') : '—'} highlight={property.isAbsenteeOwner} />
-                <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Edit on Signals tab</p>
-              </div>
-              <div title="Update on the Signals tab" className="cursor-help">
-                <DetailItem label="Rental Property" value={property.isRentalProperty != null ? (property.isRentalProperty ? 'Yes' : 'No') : '—'} highlight={property.isRentalProperty} />
-                <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Edit on Signals tab</p>
+            <div className="space-y-4 mt-3">
+              {/* Address fields */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="md:col-span-2">
+                  <EditField label="Address" value={propForm.address} onChange={(v) => setPropForm({ ...propForm, address: v })} />
+                </div>
+                <EditField label="City" value={propForm.city} onChange={(v) => setPropForm({ ...propForm, city: v })} />
+                <div className="grid grid-cols-3 gap-3">
+                  <EditField label="State" value={propForm.state} onChange={(v) => setPropForm({ ...propForm, state: v })} />
+                  <EditField label="Zip" value={propForm.zipCode} onChange={(v) => setPropForm({ ...propForm, zipCode: v })} />
+                  <EditField label="County" value={propForm.county} onChange={(v) => setPropForm({ ...propForm, county: v })} />
+                </div>
               </div>
 
+              {/* Property attributes */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-3 border-t" style={{ borderColor: 'var(--border-primary)' }}>
+                <EditField label="Type" value={propForm.propertyType} onChange={(v) => setPropForm({ ...propForm, propertyType: v })} />
+                <EditField label="Bedrooms" value={propForm.bedrooms} onChange={(v) => setPropForm({ ...propForm, bedrooms: v })} type="number" />
+                <EditField label="Bathrooms" value={propForm.bathrooms} onChange={(v) => setPropForm({ ...propForm, bathrooms: v })} type="number" />
+                <EditField label="Sq Ft" value={propForm.sqft} onChange={(v) => setPropForm({ ...propForm, sqft: v })} type="number" />
+                <EditField label="Year Built" value={propForm.yearBuilt} onChange={(v) => setPropForm({ ...propForm, yearBuilt: v })} type="number" />
+                <div title="Update on the Signals tab" className="cursor-help">
+                  <DetailItem label="Vacant" value={property.isVacant != null ? (property.isVacant ? 'Yes' : 'No') : '—'} highlight={property.isVacant} />
+                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Edit on Signals tab</p>
+                </div>
+              </div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <DetailItem label="Type" value={property.propertyType || '—'} />
-              <DetailItem label="Bedrooms" value={property.bedrooms != null ? `${property.bedrooms}` : '—'} />
-              <DetailItem label="Bathrooms" value={property.bathrooms != null ? `${property.bathrooms}` : '—'} />
-              <DetailItem label="Sq Ft" value={property.sqft != null ? property.sqft.toLocaleString() : '—'} />
-              <DetailItem label="Year Built" value={property.yearBuilt != null ? `${property.yearBuilt}` : '—'} />
-              <DetailItem label="County" value={property.county || '—'} />
-              <DetailItem label="Zip Code" value={property.zipCode || '—'} />
-              <DetailItem label="Vacant" value={property.isVacant != null ? (property.isVacant ? 'Yes' : 'No') : '—'} highlight={property.isVacant} />
-              <DetailItem label="Absentee Owner" value={property.isAbsenteeOwner != null ? (property.isAbsenteeOwner ? 'Yes' : 'No') : '—'} highlight={property.isAbsenteeOwner} />
-              <div>
-                <DetailItem label="Rental Property" value={property.isRentalProperty != null ? (property.isRentalProperty ? 'Yes' : 'No') : '—'} highlight={property.isRentalProperty} />
-                {property.isRentalProperty && property.rentalLicenseExpiration && (
-                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-                    Expires: {new Date(property.rentalLicenseExpiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            <>
+              <p className="text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
+                {property.address}, {property.city}, {property.state} {property.zipCode}
+                {property.county ? ` · ${property.county} County` : ''}
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <DetailItem label="Type" value={property.propertyType || '—'} />
+                <DetailItem label="Bedrooms" value={property.bedrooms != null ? `${property.bedrooms}` : '—'} />
+                <DetailItem label="Bathrooms" value={property.bathrooms != null ? `${property.bathrooms}` : '—'} />
+                <DetailItem label="Sq Ft" value={property.sqft != null ? property.sqft.toLocaleString() : '—'} />
+                <DetailItem label="Year Built" value={property.yearBuilt != null ? `${property.yearBuilt}` : '—'} />
+                <DetailItem label="Vacant" value={property.isVacant != null ? (property.isVacant ? 'Yes' : 'No') : '—'} highlight={property.isVacant} />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Deal Analysis */}
+        <div className="ws-card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              <Calculator size={16} style={{ color: 'var(--brand-deep)' }} /> Deal Analysis
+            </h3>
+            {!editingDeal ? (
+              <button
+                onClick={() => setEditingDeal(true)}
+                className="ws-btn-ghost text-xs p-1.5 rounded-md"
+                title="Edit deal numbers"
+              >
+                <Pencil size={14} />
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <button onClick={cancelDealEdit} className="ws-btn-ghost text-xs p-1.5 rounded-md" title="Cancel">
+                  <X size={14} />
+                </button>
+                <button
+                  onClick={handleSaveDeal}
+                  disabled={saving}
+                  className="ws-btn-primary text-xs px-2.5 py-1.5 rounded-md flex items-center gap-1"
+                >
+                  {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                  Save
+                </button>
+              </div>
+            )}
+          </div>
+
+          {editingDeal ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>After Repair Value (ARV)</p>
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-tertiary)' }}>$</span>
+                    <input
+                      type="number"
+                      value={dealForm.estimatedValue}
+                      onChange={(e) => setDealForm({ ...dealForm, estimatedValue: e.target.value })}
+                      className="ws-input text-sm py-1.5 pl-6 pr-2.5 w-full"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>Repair Estimate</p>
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-tertiary)' }}>$</span>
+                    <input
+                      type="number"
+                      value={dealForm.estimatedRepairCost}
+                      onChange={(e) => setDealForm({ ...dealForm, estimatedRepairCost: e.target.value })}
+                      className="ws-input text-sm py-1.5 pl-6 pr-2.5 w-full"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>
+                    Max Allowable Offer ({maoPercentage}%)
                   </p>
+                  <p className="text-sm font-semibold py-1.5" style={{ color: calcMao != null ? 'var(--brand-deep)' : 'var(--text-tertiary)' }}>
+                    {calcMao != null ? formatCurrency(calcMao) : '—'}
+                  </p>
+                  <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                    ARV × {maoPercentage}% − Repairs
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>Your Offer</p>
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-tertiary)' }}>$</span>
+                    <input
+                      type="number"
+                      value={dealForm.offerPrice}
+                      onChange={(e) => setDealForm({ ...dealForm, offerPrice: e.target.value })}
+                      className="ws-input text-sm py-1.5 pl-6 pr-2.5 w-full"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Live deal calculations while editing */}
+              {(calcDealEquity != null || calcAssignmentFee != null) && (
+                <div className="grid grid-cols-2 gap-3">
+                  {calcDealEquity != null && (
+                    <div
+                      className="p-3 rounded-lg text-center"
+                      style={{ backgroundColor: calcDealEquity >= 0 ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)' }}
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                        Deal Equity
+                      </p>
+                      <p className="text-lg font-bold" style={{ color: calcDealEquity >= 0 ? '#10b981' : '#ef4444' }}>
+                        {formatCurrency(calcDealEquity)}
+                      </p>
+                      <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                        ARV − Repairs − Offer
+                      </p>
+                    </div>
+                  )}
+                  {calcAssignmentFee != null && (
+                    <div
+                      className="p-3 rounded-lg text-center"
+                      style={{ backgroundColor: calcAssignmentFee >= 0 ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)' }}
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                        Suggested Assignment Fee
+                      </p>
+                      <p className="text-lg font-bold" style={{ color: calcAssignmentFee >= 0 ? '#10b981' : '#ef4444' }}>
+                        {formatCurrency(calcAssignmentFee)}
+                      </p>
+                      <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                        MAO − Offer
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <DetailItem label="After Repair Value (ARV)" value={property.estimatedValue != null ? formatCurrency(property.estimatedValue) : '—'} />
+                <DetailItem label="Repair Estimate" value={property.estimatedRepairCost != null ? formatCurrency(property.estimatedRepairCost) : '—'} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                    Max Allowable Offer ({maoPercentage}%)
+                  </p>
+                  <p className="text-sm font-medium" style={{ color: calcMao != null ? 'var(--brand-deep)' : 'var(--text-tertiary)' }}>
+                    {calcMao != null ? formatCurrency(calcMao) : '—'}
+                  </p>
+                </div>
+                <DetailItem label="Your Offer" value={property.offerPrice != null ? formatCurrency(property.offerPrice) : '—'} />
+              </div>
+
+              {/* Deal calculations display */}
+              {(calcDealEquity != null || calcAssignmentFee != null) && (
+                <div className="grid grid-cols-2 gap-3">
+                  {calcDealEquity != null && (
+                    <div
+                      className="p-3 rounded-lg text-center"
+                      style={{ backgroundColor: calcDealEquity >= 0 ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)' }}
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                        Deal Equity
+                      </p>
+                      <p className="text-lg font-bold" style={{ color: calcDealEquity >= 0 ? '#10b981' : '#ef4444' }}>
+                        {formatCurrency(calcDealEquity)}
+                      </p>
+                      <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                        ARV − Repairs − Offer
+                      </p>
+                    </div>
+                  )}
+                  {calcAssignmentFee != null && (
+                    <div
+                      className="p-3 rounded-lg text-center"
+                      style={{ backgroundColor: calcAssignmentFee >= 0 ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)' }}
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                        Suggested Assignment Fee
+                      </p>
+                      <p className="text-lg font-bold" style={{ color: calcAssignmentFee >= 0 ? '#10b981' : '#ef4444' }}>
+                        {formatCurrency(calcAssignmentFee)}
+                      </p>
+                      <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                        MAO − Offer
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Reference Data — collapsible */}
+              <div>
+                <button
+                  onClick={() => setShowReference(!showReference)}
+                  className="flex items-center gap-1.5 text-xs font-medium w-full"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  <ChevronDown
+                    size={14}
+                    className="transition-transform duration-200"
+                    style={{ transform: showReference ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                  />
+                  Reference Data
+                </button>
+                {showReference && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-3 pt-3 border-t" style={{ borderColor: 'var(--border-primary)' }}>
+                    <DetailItem label="Tax Assessment" value={property.assessedValue != null ? formatCurrency(property.assessedValue) : '—'} />
+                    <DetailItem label="Equity" value={property.estimatedEquity != null ? formatCurrency(property.estimatedEquity) : '—'} />
+                    <DetailItem label="Ownership" value={property.ownershipLengthMonths != null || property.ownershipLength != null ? `${Math.round((property.ownershipLengthMonths ?? property.ownershipLength) / 12)} years` : '—'} />
+                  </div>
                 )}
               </div>
             </div>
           )}
-        </div>
-
-        {/* Financial */}
-        <div className="ws-card p-5">
-          <h3 className="text-sm font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-            <DollarSign size={16} style={{ color: 'var(--brand-deep)' }} /> Financial
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <DetailItem label="Assessed Value" value={property.assessedValue != null ? formatCurrency(property.assessedValue) : '—'} />
-            <DetailItem label="Estimated ARV" value={property.estimatedValue != null ? formatCurrency(property.estimatedValue) : '—'} />
-            <DetailItem label="Estimated Equity" value={property.estimatedEquity != null ? formatCurrency(property.estimatedEquity) : '—'} highlight={property.estimatedEquity != null} />
-            <DetailItem label="Equity %" value={property.estimatedValue && property.estimatedEquity ? `${Math.round((property.estimatedEquity / property.estimatedValue) * 100)}%` : '—'} highlight={!!(property.estimatedValue && property.estimatedEquity)} />
-            <DetailItem label="Ownership" value={property.ownershipLengthMonths != null || property.ownershipLength != null ? `${Math.round((property.ownershipLengthMonths ?? property.ownershipLength) / 12)} years` : '—'} />
-          </div>
         </div>
 
         {/* Owner Info */}
@@ -752,6 +1013,7 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
                   <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>—</p>
                 )}
               </div>
+              <DetailItem label="Absentee Owner" value={property.isAbsenteeOwner ? 'Yes' : '—'} highlight={property.isAbsenteeOwner} />
             </div>
           )}
         </div>

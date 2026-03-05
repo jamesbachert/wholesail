@@ -79,9 +79,11 @@ model Property {
   lotSize         Float?
   yearBuilt       Int?
 
-  assessedValue   Float?
-  estimatedValue  Float?
-  estimatedEquity Float?
+  assessedValue         Float?   // Tax assessment (from county records)
+  estimatedValue        Float?   // After Repair Value (ARV)
+  estimatedEquity       Float?
+  estimatedRepairCost   Float?   // Estimated rehab/repair cost
+  offerPrice            Float?   // Actual offer amount
 
   ownerName       String?
   ownerMailingAddress String?

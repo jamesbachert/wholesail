@@ -127,9 +127,10 @@ function StreetViewModal({
     embedUrl = `https://www.google.com/maps/embed/v1/streetview?location=${coords.lat},${coords.lng}&key=${apiKey}`;
   }
 
-  // Fallback: open Google Maps in a new tab
+  // Fallback: open Google Maps Street View in a new tab
+  // !1e1 = Street View layer (not !1e3 which is Earth/satellite)
   const mapsUrl = coords
-    ? `https://www.google.com/maps/@${coords.lat},${coords.lng},3a,75y,0h,90t/data=!3m1!1e3`
+    ? `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${coords.lat},${coords.lng}`
     : `https://www.google.com/maps/search/${encodedAddress}`;
 
   return (
