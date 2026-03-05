@@ -105,6 +105,13 @@ body {
   background: var(--text-secondary);
 }
 
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* ============================================================
    UTILITY CLASSES
    ============================================================ */

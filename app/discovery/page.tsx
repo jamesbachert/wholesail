@@ -10,6 +10,8 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   XCircle,
   ArrowRight,
@@ -105,6 +107,7 @@ export default function DiscoveryPage() {
   const [minSourcesFilter, setMinSourcesFilter] = useState('');
   const [sortField, setSortField] = useState<SortField>('discoveryScore');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [syncing, setSyncing] = useState<string | null>(null); // slug of currently syncing connector
@@ -135,14 +138,17 @@ export default function DiscoveryPage() {
     if (searchQuery) params.set('search', searchQuery);
     if (sourceFilter !== 'all') params.set('source', sourceFilter);
     if (minSourcesFilter) params.set('minSources', minSourcesFilter);
+    params.set('page', String(currentPage));
+    params.set('limit', '50');
     return `/api/discovery/leads?${params.toString()}`;
-  }, [regionSlug, sortField, sortDir, statusFilter, searchQuery, sourceFilter, minSourcesFilter]);
+  }, [regionSlug, sortField, sortDir, statusFilter, searchQuery, sourceFilter, minSourcesFilter, currentPage]);
 
   const { data: leadsData, loading: leadsLoading, refetch: refetchLeads } = useApi<any>(leadsUrl);
   const { data: sourcesData, refetch: refetchSources } = useApi<any>(`/api/discovery/sources?region=${regionSlug}`);
 
   const leads = leadsData?.leads || [];
   const total = leadsData?.total || 0;
+  const totalPages = leadsData?.totalPages || 1;
   const sources = (sourcesData?.sources || []).sort((a: any, b: any) => a.name.localeCompare(b.name));
   const enrichmentSources = (sourcesData?.enrichmentSources || []).sort((a: any, b: any) => a.name.localeCompare(b.name));
   const allSources = [...sources, ...enrichmentSources];
@@ -173,6 +179,13 @@ export default function DiscoveryPage() {
       setSortField(field);
       setSortDir('desc');
     }
+    setCurrentPage(1); setSelectedLeads(new Set());
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    setSelectedLeads(new Set());
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const toggleSelect = (id: string) => {
@@ -370,7 +383,7 @@ export default function DiscoveryPage() {
             Lead Discovery
           </h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-            {leadsLoading ? 'Loading...' : `${total} discovered properties`} · sorted by {sortLabel}
+            {leadsLoading ? 'Loading...' : `${total} discovered properties`}{totalPages > 1 ? ` · page ${currentPage} of ${totalPages}` : ''} · sorted by {sortLabel}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -747,7 +760,7 @@ export default function DiscoveryPage() {
               type="text"
               placeholder="Search by address..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); setSelectedLeads(new Set()); }}
               className="bg-transparent text-sm outline-none flex-1"
               style={{ color: 'var(--text-primary)' }}
             />
@@ -756,7 +769,7 @@ export default function DiscoveryPage() {
             {STATUS_FILTERS.map((s) => (
               <button
                 key={s}
-                onClick={() => { setStatusFilter(s); setExpandedRow(null); }}
+                onClick={() => { setStatusFilter(s); setExpandedRow(null); setCurrentPage(1); setSelectedLeads(new Set()); }}
                 className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
                 style={
                   statusFilter === s
@@ -775,7 +788,7 @@ export default function DiscoveryPage() {
             <span className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>Source:</span>
             <select
               value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value)}
+              onChange={(e) => { setSourceFilter(e.target.value); setCurrentPage(1); setSelectedLeads(new Set()); }}
               className="text-xs px-2 py-1 rounded border bg-transparent"
               style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-primary)', backgroundColor: 'var(--bg-elevated)' }}
             >
@@ -790,7 +803,7 @@ export default function DiscoveryPage() {
             {['', '2', '3'].map((val) => (
               <button
                 key={val}
-                onClick={() => setMinSourcesFilter(val)}
+                onClick={() => { setMinSourcesFilter(val); setCurrentPage(1); setSelectedLeads(new Set()); }}
                 className="px-2.5 py-1 rounded text-[11px] font-medium transition-all duration-200"
                 style={
                   minSourcesFilter === val
@@ -1184,6 +1197,57 @@ export default function DiscoveryPage() {
                   ? "No discovered leads yet. Click 'Sync Now' above to pull data from connected sources."
                   : 'No leads match your filters. Try adjusting your search or filters.'}
               </p>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div
+              className="flex items-center justify-between px-5 py-3 border-t"
+              style={{ borderColor: 'var(--border-primary)', backgroundColor: 'var(--bg-elevated)' }}
+            >
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                {((currentPage - 1) * 50) + 1}–{Math.min(currentPage * 50, total)} of {total}
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage <= 1}
+                  className="p-1.5 rounded-lg transition-colors disabled:opacity-30"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                {(() => {
+                  const pages: number[] = [];
+                  let start = Math.max(1, currentPage - 2);
+                  let end = Math.min(totalPages, start + 4);
+                  start = Math.max(1, end - 4);
+                  for (let i = start; i <= end; i++) pages.push(i);
+                  return pages.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => handlePageChange(p)}
+                      className="w-8 h-8 rounded-lg text-xs font-medium transition-colors"
+                      style={
+                        p === currentPage
+                          ? { backgroundColor: 'var(--brand-deep)', color: '#fff' }
+                          : { color: 'var(--text-secondary)' }
+                      }
+                    >
+                      {p}
+                    </button>
+                  ));
+                })()}
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage >= totalPages}
+                  className="p-1.5 rounded-lg transition-colors disabled:opacity-30"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
             </div>
           )}
         </div>

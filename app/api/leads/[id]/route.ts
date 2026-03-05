@@ -29,6 +29,7 @@ const ALLOWED_PROPERTY_FIELDS = new Set([
   'ownerName', 'ownerPhone', 'ownerPhone2', 'ownerEmail',
   'ownerMailingAddress', 'ownerCity', 'ownerState', 'ownerZip',
   'estimatedValue', 'estimatedRepairCost', 'offerPrice',
+  'purchaseDate', 'purchasePrice', 'deedBook', 'deedPage',
 ]);
 
 export async function PATCH(

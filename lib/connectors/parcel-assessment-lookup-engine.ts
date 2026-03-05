@@ -87,6 +87,20 @@ export async function checkParcelAssessment(leadId: string): Promise<ParcelAsses
     propertyUpdates.assessedValue = result.assessedValue;
   }
 
+  // Purchase/deed info
+  if (result.lastSaleDate && !property.purchaseDate) {
+    propertyUpdates.purchaseDate = new Date(result.lastSaleDate);
+  }
+  if (result.lastSalePrice != null && !property.purchasePrice) {
+    propertyUpdates.purchasePrice = result.lastSalePrice;
+  }
+  if (result.deedBook && !property.deedBook) {
+    propertyUpdates.deedBook = result.deedBook;
+  }
+  if (result.deedPage && !property.deedPage) {
+    propertyUpdates.deedPage = result.deedPage;
+  }
+
   // Parcel ID
   if (result.parcelId) {
     propertyUpdates.parcelNumber = result.parcelId;

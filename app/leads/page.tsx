@@ -11,8 +11,11 @@ import {
   Loader2,
   Plus,
   Archive,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { AddLeadModal } from '@/components/leads/AddLeadModal';
+import { BulkEnrichDialog } from '@/components/leads/BulkEnrichDialog';
 import { StreetViewButton } from '@/components/leads/StreetViewModal';
 import { useApi, apiPatch } from '@/lib/hooks';
 import { useRegion } from '@/components/shared/RegionProvider';
@@ -40,10 +43,12 @@ export default function LeadsPage() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sortField, setSortField] = useState<SortField>('totalScore');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
   const [advancedFilters, setAdvancedFilters] = useState<Filters>(emptyFilters);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({ cities: [], zipCodes: [] });
   const [showAddLead, setShowAddLead] = useState(false);
+  const [showBulkEnrich, setShowBulkEnrich] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [filtersRestored, setFiltersRestored] = useState(false);
 
@@ -93,8 +98,11 @@ export default function LeadsPage() {
     if (advancedFilters.priority) params.set('priority', advancedFilters.priority);
     if (advancedFilters.minCodeViolations) params.set('minCodeViolations', advancedFilters.minCodeViolations);
 
+    params.set('page', String(currentPage));
+    params.set('limit', '50');
+
     return `/api/leads?${params.toString()}`;
-  }, [regionSlug, sortField, sortDir, statusFilter, searchQuery, advancedFilters]);
+  }, [regionSlug, sortField, sortDir, statusFilter, searchQuery, advancedFilters, currentPage]);
 
   const { data: liveData, loading, refetch } = useApi<any>(apiUrl);
 
@@ -116,6 +124,7 @@ export default function LeadsPage() {
   }, [liveData]);
 
   const totalCount = liveData ? liveData.total : allLeads.length;
+  const totalPages = liveData?.totalPages || 1;
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -124,6 +133,8 @@ export default function LeadsPage() {
       setSortField(field);
       setSortDir('desc');
     }
+    setCurrentPage(1);
+    setSelectedLeads(new Set());
   };
 
   const toggleSelect = (id: string) => {
@@ -160,6 +171,12 @@ export default function LeadsPage() {
     }
   };
 
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    setSelectedLeads(new Set());
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const getProp = (lead: any) => lead.property || lead;
 
   const sortLabel = sortField === 'totalScore' ? 'score' :
@@ -176,14 +193,15 @@ export default function LeadsPage() {
             Leads
           </h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-            {loading ? 'Loading...' : `${totalCount} leads`} · sorted by {sortLabel}
+            {loading ? 'Loading...' : `${totalCount} leads`}{totalPages > 1 ? ` · page ${currentPage} of ${totalPages}` : ''} · sorted by {sortLabel}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {selectedLeads.size > 0 && (
             <>
               <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>{selectedLeads.size} selected</span>
-              <button className="ws-btn-primary text-xs"><Send size={14} /> Hand Off</button>
+              <button onClick={() => setShowBulkEnrich(true)} className="ws-btn-primary text-xs"><Search size={14} /> Enrich</button>
+              <button className="ws-btn-secondary text-xs"><Send size={14} /> Hand Off</button>
               <button className="ws-btn-secondary text-xs"><Download size={14} /> Export</button>
               <button
                 onClick={handleBulkArchive}
@@ -218,7 +236,7 @@ export default function LeadsPage() {
               type="text"
               placeholder="Search address, owner, zip..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); setSelectedLeads(new Set()); }}
               className="bg-transparent text-sm outline-none flex-1"
               style={{ color: 'var(--text-primary)' }}
             />
@@ -227,7 +245,7 @@ export default function LeadsPage() {
             {statusFilters.map((s) => (
               <button
                 key={s}
-                onClick={() => setStatusFilter(s)}
+                onClick={() => { setStatusFilter(s); setCurrentPage(1); setSelectedLeads(new Set()); }}
                 className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
                 style={
                   statusFilter === s
@@ -245,7 +263,7 @@ export default function LeadsPage() {
       {/* Advanced Filters */}
       <AdvancedFilters
         filters={advancedFilters}
-        onChange={setAdvancedFilters}
+        onChange={(f: Filters) => { setAdvancedFilters(f); setCurrentPage(1); setSelectedLeads(new Set()); }}
         filterOptions={filterOptions}
       />
 
@@ -376,6 +394,58 @@ export default function LeadsPage() {
               </p>
             </div>
           )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div
+              className="flex items-center justify-between px-5 py-3 border-t"
+              style={{ borderColor: 'var(--border-primary)', backgroundColor: 'var(--bg-elevated)' }}
+            >
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                {((currentPage - 1) * 50) + 1}–{Math.min(currentPage * 50, totalCount)} of {totalCount}
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage <= 1}
+                  className="p-1.5 rounded-lg transition-colors disabled:opacity-30"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                {(() => {
+                  // Show up to 5 page buttons centered around current page
+                  const pages: number[] = [];
+                  let start = Math.max(1, currentPage - 2);
+                  let end = Math.min(totalPages, start + 4);
+                  start = Math.max(1, end - 4);
+                  for (let i = start; i <= end; i++) pages.push(i);
+                  return pages.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => handlePageChange(p)}
+                      className="w-8 h-8 rounded-lg text-xs font-medium transition-colors"
+                      style={
+                        p === currentPage
+                          ? { backgroundColor: 'var(--brand-deep)', color: '#fff' }
+                          : { color: 'var(--text-secondary)' }
+                      }
+                    >
+                      {p}
+                    </button>
+                  ));
+                })()}
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage >= totalPages}
+                  className="p-1.5 rounded-lg transition-colors disabled:opacity-30"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
       {/* Add Lead Modal */}
@@ -383,6 +453,25 @@ export default function LeadsPage() {
         <AddLeadModal
           onClose={() => setShowAddLead(false)}
           onLeadCreated={() => refetch()}
+        />
+      )}
+      {/* Bulk Enrich Dialog */}
+      {showBulkEnrich && (
+        <BulkEnrichDialog
+          leads={allLeads.filter((l: any) => selectedLeads.has(l.id)).map((l: any) => ({
+            id: l.id,
+            property: {
+              zipCode: l.property?.zipCode || '',
+              address: l.property?.address || '',
+              city: l.property?.city || '',
+            },
+          }))}
+          onClose={() => setShowBulkEnrich(false)}
+          onComplete={() => {
+            setShowBulkEnrich(false);
+            setSelectedLeads(new Set());
+            refetch();
+          }}
         />
       )}
     </div>

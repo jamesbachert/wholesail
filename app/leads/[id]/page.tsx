@@ -43,8 +43,9 @@ import {
 } from '@/lib/mockData';
 import { SignalsTab } from '@/components/leads/SignalsTab';
 import { EnrichmentTab } from '@/components/leads/EnrichmentTab';
-import { CallDialog } from '@/components/leads/CallDialog';
+import { CallMode } from '@/components/leads/CallMode';
 import { TextDialog } from '@/components/leads/TextDialog';
+import { PropertyStoryTimeline } from '@/components/leads/PropertyStoryTimeline';
 import { StreetViewButton } from '@/components/leads/StreetViewModal';
 import { formatPhone, formatPhoneInput, stripPhone } from '@/lib/phone';
 
@@ -65,7 +66,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const router = useRouter();
   const { data: lead, loading, refetch } = useApi<any>(`/api/leads/${id}`);
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'signals' | 'timeline' | 'notes' | 'enrichment'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'signals' | 'activity-log' | 'notes' | 'enrichment'>('overview');
   const [prevTab, setPrevTab] = useState<string>('overview');
   const [newNote, setNewNote] = useState('');
   const [savingNote, setSavingNote] = useState(false);
@@ -234,34 +235,43 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      {/* Tab Navigation — Overview | Signals | Timeline | Notes | Enrichment */}
-      <div className="flex items-center gap-1 border-b ml-0 md:ml-11 overflow-x-auto" style={{ borderColor: 'var(--border-primary)' }}>
-        {(['overview', 'signals', 'timeline', 'notes', 'enrichment'] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => handleTabChange(tab)}
-            className="px-4 py-2.5 text-sm font-medium transition-all duration-200 border-b-2 -mb-px capitalize flex items-center gap-1.5 whitespace-nowrap"
-            style={{
-              borderColor: activeTab === tab ? 'var(--brand-deep)' : 'transparent',
-              color: activeTab === tab ? 'var(--brand-deep)' : 'var(--text-secondary)',
-            }}
-          >
-            {tab === 'signals' && <Zap size={14} />}
-            {tab === 'enrichment' && <Search size={14} />}
-            {tab}
-            {tab === 'signals' && (liveSignalCount ?? signals.length) > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold text-white" style={{ backgroundColor: 'var(--brand-deep)' }}>
-                {liveSignalCount ?? signals.length}
-              </span>
-            )}
-            {tab === 'timeline' && contactHistory.length > 0 && (
-              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-tertiary)' }}>{contactHistory.length}</span>
-            )}
-            {tab === 'notes' && notes.length > 0 && (
-              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-tertiary)' }}>{notes.length}</span>
-            )}
-          </button>
-        ))}
+      {/* Tab Navigation — Overview | Signals | Activity Log | Notes | Enrichment */}
+      <div className="flex items-center gap-1 border-b ml-0 md:ml-11 overflow-x-auto no-scrollbar" style={{ borderColor: 'var(--border-primary)' }}>
+        {(['overview', 'signals', 'activity-log', 'notes', 'enrichment'] as const).map((tab) => {
+          const TAB_LABELS: Record<string, string> = {
+            'overview': 'Overview',
+            'signals': 'Signals',
+            'activity-log': 'Activity Log',
+            'notes': 'Notes',
+            'enrichment': 'Enrichment',
+          };
+          return (
+            <button
+              key={tab}
+              onClick={() => handleTabChange(tab)}
+              className="px-4 py-2.5 text-sm font-medium transition-all duration-200 border-b-2 -mb-px flex items-center gap-1.5 whitespace-nowrap"
+              style={{
+                borderColor: activeTab === tab ? 'var(--brand-deep)' : 'transparent',
+                color: activeTab === tab ? 'var(--brand-deep)' : 'var(--text-secondary)',
+              }}
+            >
+              {tab === 'signals' && <Zap size={14} />}
+              {tab === 'enrichment' && <Search size={14} />}
+              {TAB_LABELS[tab]}
+              {tab === 'signals' && (liveSignalCount ?? signals.length) > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold text-white" style={{ backgroundColor: 'var(--brand-deep)' }}>
+                  {liveSignalCount ?? signals.length}
+                </span>
+              )}
+              {tab === 'activity-log' && contactHistory.length > 0 && (
+                <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-tertiary)' }}>{contactHistory.length}</span>
+              )}
+              {tab === 'notes' && notes.length > 0 && (
+                <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-tertiary)' }}>{notes.length}</span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Tab Content */}
@@ -287,7 +297,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             onCountChange={setLiveSignalCount}
           />
         )}
-        {activeTab === 'timeline' && (
+        {activeTab === 'activity-log' && (
           <TimelineTab contactHistory={contactHistory} />
         )}
         {activeTab === 'notes' && (
@@ -310,13 +320,30 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         )}
       </div>
 
-      {/* Call Dialog */}
+      {/* Call Mode — Full-screen dashboard */}
       {showCallDialog && (
-        <CallDialog
+        <CallMode
           leadId={lead.id}
           ownerName={property.ownerName || ''}
           address={property.address}
           phoneNumber={property.ownerPhone || null}
+          property={{
+            city: property.city,
+            state: property.state,
+            zipCode: property.zipCode,
+            propertyType: property.propertyType,
+            bedrooms: property.bedrooms,
+            bathrooms: property.bathrooms,
+            sqft: property.sqft,
+            yearBuilt: property.yearBuilt,
+            purchaseDate: property.purchaseDate,
+            purchasePrice: property.purchasePrice,
+            assessedValue: property.assessedValue,
+            estimatedValue: property.estimatedValue,
+          }}
+          signals={signals}
+          totalScore={lead.totalScore}
+          priority={lead.priority || 'normal'}
           onClose={() => setShowCallDialog(false)}
           onCallLogged={() => refetch()}
         />
@@ -558,6 +585,9 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
             )}
           </div>
         )}
+
+        {/* Property Story Timeline */}
+        <PropertyStoryTimeline property={property} signals={lead.signals || []} />
 
         {/* Property Details */}
         <div className="ws-card p-5">

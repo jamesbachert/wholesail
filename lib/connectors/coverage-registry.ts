@@ -170,6 +170,16 @@ const COVERAGE: ConnectorCoverage[] = [
     supportedZipCodes: ALLENTOWN_ZIPS,
   },
   {
+    slug: 'allentown-tax-parcels',
+    name: 'Allentown Tax Parcels',
+    type: 'lookup',
+    connectorKind: 'parcel_assessment',
+    description: 'Tax parcel data with sale history, deed info, and assessments from City of Allentown.',
+    regionSlug: 'lehigh-valley',
+    enrichmentMode: 'live_lookup',
+    supportedZipCodes: ALLENTOWN_ZIPS,
+  },
+  {
     slug: 'allentown-ara-blight',
     name: 'Allentown ARA Blight',
     type: 'import',
@@ -413,4 +423,22 @@ export function getConnectorCoverage(slug: string): ConnectorCoverage | undefine
 /** Get all registered coverage entries */
 export function getAllCoverage(): ConnectorCoverage[] {
   return [...COVERAGE];
+}
+
+/** Get all connectors that cover ANY of the given zip codes, with per-connector zip match info */
+export function getConnectorsForZips(
+  zipCodes: string[]
+): Array<{ coverage: ConnectorCoverage; matchingZips: string[] }> {
+  const map = new Map<string, { coverage: ConnectorCoverage; matchingZips: string[] }>();
+  for (const zip of zipCodes) {
+    for (const c of getConnectorsForZip(zip)) {
+      const existing = map.get(c.slug);
+      if (existing) {
+        if (!existing.matchingZips.includes(zip)) existing.matchingZips.push(zip);
+      } else {
+        map.set(c.slug, { coverage: c, matchingZips: [zip] });
+      }
+    }
+  }
+  return Array.from(map.values());
 }

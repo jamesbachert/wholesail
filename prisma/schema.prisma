@@ -102,6 +102,11 @@ model Property {
   rentalLicenseNumber    String?   // License number from the rental license database
   hasCodeViolations Boolean @default(false)
 
+  purchaseDate    DateTime?   // Last sale date from deed/parcel records
+  purchasePrice   Float?      // Last sale price from deed/parcel records
+  deedBook        String?     // Deed book number
+  deedPage        String?     // Deed page number
+
   latitude        Float?
   longitude       Float?
 
