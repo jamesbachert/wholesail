@@ -41,6 +41,13 @@ interface BulkEnrichResult {
   errors: Array<{ leadId: string; slug: string; error: string }>;
 }
 
+interface ProgressState {
+  leadsProcessed: number;
+  leadsToProcess: number;
+  totalSignalsAdded: number;
+  currentAddress: string;
+}
+
 interface BulkEnrichDialogProps {
   leads: Array<{
     id: string;
@@ -61,6 +68,12 @@ export function BulkEnrichDialog({ leads, onClose, onComplete }: BulkEnrichDialo
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<BulkEnrichResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<ProgressState>({
+    leadsProcessed: 0,
+    leadsToProcess: 0,
+    totalSignalsAdded: 0,
+    currentAddress: '',
+  });
   const abortRef = useRef<AbortController | null>(null);
 
   const overLimit = leads.length > BULK_LIMIT;
@@ -149,6 +162,12 @@ export function BulkEnrichDialog({ leads, onClose, onComplete }: BulkEnrichDialo
   async function handleRun() {
     setPhase('running');
     setError(null);
+    setProgress({
+      leadsProcessed: 0,
+      leadsToProcess: selectedLeadCount,
+      totalSignalsAdded: 0,
+      currentAddress: '',
+    });
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -165,13 +184,68 @@ export function BulkEnrichDialog({ leads, onClose, onComplete }: BulkEnrichDialo
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Enrichment failed');
+        // Validation errors come back as normal JSON
+        const text = await res.text();
+        let errorMessage = 'Enrichment failed';
+        try {
+          const data = JSON.parse(text);
+          errorMessage = data.error || errorMessage;
+        } catch {
+          // Could not parse error body
+        }
+        throw new Error(errorMessage);
       }
 
-      const data: BulkEnrichResult = await res.json();
-      setResult(data);
-      setPhase('results');
+      // Read NDJSON stream for real-time progress
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop()!; // Keep any incomplete line in the buffer
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+
+          let event: any;
+          try {
+            event = JSON.parse(line);
+          } catch {
+            continue; // Skip malformed lines
+          }
+
+          if (event.type === 'start') {
+            setProgress((prev) => ({
+              ...prev,
+              leadsToProcess: event.leadsToProcess,
+            }));
+          } else if (event.type === 'progress') {
+            setProgress({
+              leadsProcessed: event.leadsProcessed,
+              leadsToProcess: event.leadsToProcess,
+              totalSignalsAdded: event.totalSignalsAdded,
+              currentAddress: event.currentAddress,
+            });
+          } else if (event.type === 'complete') {
+            setResult({
+              totalLeads: event.totalLeads,
+              leadsProcessed: event.leadsProcessed,
+              leadsSkipped: event.leadsSkipped,
+              totalSignalsAdded: event.totalSignalsAdded,
+              connectorResults: event.connectorResults,
+              errors: event.errors,
+            });
+            setPhase('results');
+          } else if (event.type === 'error') {
+            throw new Error(event.error);
+          }
+        }
+      }
     } catch (err: any) {
       if (err.name === 'AbortError') {
         setPhase('select');
@@ -393,23 +467,56 @@ export function BulkEnrichDialog({ leads, onClose, onComplete }: BulkEnrichDialo
   }
 
   function RunningPhase() {
+    const pct =
+      progress.leadsToProcess > 0
+        ? Math.round((progress.leadsProcessed / progress.leadsToProcess) * 100)
+        : 0;
+
+    const isStarting = progress.leadsProcessed === 0;
+
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-12">
         <Loader2 size={32} className="animate-spin" style={{ color: 'var(--brand-deep)' }} />
         <div className="text-center">
           <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-            Running enrichment...
+            {isStarting
+              ? 'Starting enrichment...'
+              : `Enriched ${progress.leadsProcessed} of ${progress.leadsToProcess} leads`}
           </p>
-          <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-            Processing {selectedLeadCount} leads with {selected.size} connector{selected.size !== 1 ? 's' : ''}
-          </p>
+          {progress.currentAddress && (
+            <p
+              className="text-xs mt-1 truncate max-w-[280px] mx-auto"
+              style={{ color: 'var(--text-tertiary)' }}
+            >
+              {progress.currentAddress}
+            </p>
+          )}
+          {progress.totalSignalsAdded > 0 && (
+            <p className="text-xs mt-1.5 font-medium" style={{ color: 'var(--success)' }}>
+              {progress.totalSignalsAdded} signal{progress.totalSignalsAdded !== 1 ? 's' : ''} found
+            </p>
+          )}
         </div>
-        {/* Progress bar (indeterminate) */}
-        <div className="w-full max-w-xs h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+        {/* Real progress bar */}
+        <div className="w-full max-w-xs">
           <div
-            className="h-full rounded-full animate-pulse"
-            style={{ backgroundColor: 'var(--brand-deep)', width: '60%' }}
-          />
+            className="h-2 rounded-full overflow-hidden"
+            style={{ backgroundColor: 'var(--bg-elevated)' }}
+          >
+            <div
+              className="h-full rounded-full transition-all duration-500 ease-out"
+              style={{
+                backgroundColor: 'var(--brand-deep)',
+                width: isStarting ? '0%' : `${Math.max(pct, 3)}%`,
+              }}
+            />
+          </div>
+          <p
+            className="text-[10px] text-center mt-1.5 tabular-nums"
+            style={{ color: 'var(--text-tertiary)' }}
+          >
+            {pct}%
+          </p>
         </div>
       </div>
     );
