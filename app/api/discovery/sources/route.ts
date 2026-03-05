@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
           regionSlug: connector.regionSlug,
           mode: connector.mode,
           type: connector.type,
+          sourceUrl: connector.sourceUrl,
           signalCount,
           lastSync: lastSync
             ? {

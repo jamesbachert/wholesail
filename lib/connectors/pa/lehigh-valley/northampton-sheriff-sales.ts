@@ -65,6 +65,7 @@ export class NorthamptonSheriffSalesConnector implements DataSourceConnector {
   regionSlug = 'lehigh-valley';
   description =
     'Foreclosure properties in Northampton County. Paste data from web.northamptoncounty.org sale list.';
+  sourceUrl = 'https://web.northamptoncounty.org/SheriffSale/SheriffSale.html';
 
   // This connector doesn't auto-fetch — it receives data via POST body
   // The fetchAndParse method handles the auto-attempt, but the real

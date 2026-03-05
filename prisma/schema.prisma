@@ -168,6 +168,7 @@ model Lead {
   contacts        ContactLog[]
   notes           LeadNote[]
   handoffs        Handoff[]
+  enrichmentLogs  EnrichmentLog[]
 
   @@index([totalScore(sort: Desc)])
   @@index([status])
@@ -216,6 +217,26 @@ model LeadSignal {
 
   @@index([leadId])
   @@index([signalType])
+}
+
+// ============================================================
+// ENRICHMENT HISTORY
+// ============================================================
+
+model EnrichmentLog {
+  id             String   @id @default(cuid())
+  leadId         String
+  lead           Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  connectorSlug  String
+  connectorName  String
+  enrichmentMode String   // 'live_lookup' | 'cross_reference'
+  found          Boolean
+  signalsAdded   Int      @default(0)
+  error          String?
+  createdAt      DateTime @default(now())
+
+  @@index([leadId])
+  @@index([createdAt(sort: Desc)])
 }
 
 // ============================================================

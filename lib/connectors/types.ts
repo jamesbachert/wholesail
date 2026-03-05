@@ -9,9 +9,10 @@
  * ConnectorMode determines how a connector's data flows:
  * - 'import':    Writes to Property/Lead tables only (classic pipeline import)
  * - 'discovery': Writes to DiscoveredLead/DiscoverySignal only (staging area)
- * - 'both':      Writes to both — import pipeline AND discovery staging
+ * - 'both':          Writes to both — import pipeline AND discovery staging
+ * - 'manual_import': Like discovery, but requires manual paste instead of auto-fetch
  */
-export type ConnectorMode = 'import' | 'discovery' | 'both';
+export type ConnectorMode = 'import' | 'discovery' | 'both' | 'manual_import';
 
 export interface ConnectorResult {
   success: boolean;
@@ -53,7 +54,11 @@ export interface DataSourceConnector {
   type: string;
   regionSlug: string;
   description: string;
+  sourceUrl?: string;
 
   // Fetch and parse data from the source
   fetchAndParse(): Promise<ParsedRecord[]>;
+
+  // Parse manually pasted data (for manual_import connectors)
+  parseManualInput?(rawText: string): ParsedRecord[];
 }

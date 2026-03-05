@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 import { getConnectorCoverage } from '@/lib/connectors/coverage-registry';
 import { crossReferenceEnrich, CrossReferenceResult } from '@/lib/connectors/cross-reference-engine';
 import { checkRentalLicense } from '@/lib/connectors/rental-lookup-engine';
@@ -92,6 +93,24 @@ export async function POST(
     }
 
     const totalSignals = results.reduce((sum, r) => sum + r.signalsAdded, 0);
+
+    // Log enrichment results for history
+    if (results.length > 0) {
+      await prisma.enrichmentLog.createMany({
+        data: results.map((r) => {
+          const coverage = getConnectorCoverage(r.slug);
+          return {
+            leadId: id,
+            connectorSlug: r.slug,
+            connectorName: r.name,
+            enrichmentMode: coverage?.enrichmentMode || 'unknown',
+            found: r.found,
+            signalsAdded: r.signalsAdded,
+            error: r.error || null,
+          };
+        }),
+      });
+    }
 
     return NextResponse.json({
       leadId: id,

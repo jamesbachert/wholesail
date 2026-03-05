@@ -32,7 +32,7 @@ const importConnectors: RegisteredConnector[] = [
   // Pennsylvania — Lehigh Valley
   { connector: new LehighSheriffSalesConnector(), mode: 'discovery' },
   { connector: new LehighRepositoryConnector(), mode: 'import' },
-  { connector: new NorthamptonSheriffSalesConnector(), mode: 'discovery' },
+  { connector: new NorthamptonSheriffSalesConnector(), mode: 'manual_import' },
   { connector: new AllentownCodeViolationsConnector(), mode: 'discovery' },
   // Pennsylvania — Berks-Lancaster
   { connector: new BerksParcelAssessmentConnector(), mode: 'discovery' },
@@ -108,6 +108,7 @@ export function getDiscoveryCapableConnectors(regionSlug: string) {
     description: string;
     mode: ConnectorMode;
     type: 'discovery' | 'import';
+    sourceUrl?: string;
   }> = [];
 
   // Discovery connectors
@@ -124,9 +125,9 @@ export function getDiscoveryCapableConnectors(regionSlug: string) {
     }
   }
 
-  // Import connectors with mode 'discovery' or 'both'
+  // Import connectors with mode 'discovery', 'both', or 'manual_import'
   for (const rc of importConnectors) {
-    if ((rc.mode === 'discovery' || rc.mode === 'both') && rc.connector.regionSlug === regionSlug) {
+    if ((rc.mode === 'discovery' || rc.mode === 'both' || rc.mode === 'manual_import') && rc.connector.regionSlug === regionSlug) {
       result.push({
         name: rc.connector.name,
         slug: rc.connector.slug,
@@ -134,6 +135,7 @@ export function getDiscoveryCapableConnectors(regionSlug: string) {
         description: rc.connector.description,
         mode: rc.mode,
         type: 'import',
+        sourceUrl: rc.connector.sourceUrl,
       });
     }
   }

@@ -42,6 +42,7 @@ import {
   timeAgo,
 } from '@/lib/mockData';
 import { SignalsTab } from '@/components/leads/SignalsTab';
+import { EnrichmentTab } from '@/components/leads/EnrichmentTab';
 import { CallDialog } from '@/components/leads/CallDialog';
 import { TextDialog } from '@/components/leads/TextDialog';
 import { StreetViewButton } from '@/components/leads/StreetViewModal';
@@ -64,7 +65,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const router = useRouter();
   const { data: lead, loading, refetch } = useApi<any>(`/api/leads/${id}`);
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'signals' | 'timeline' | 'notes'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'signals' | 'timeline' | 'notes' | 'enrichment'>('overview');
   const [prevTab, setPrevTab] = useState<string>('overview');
   const [newNote, setNewNote] = useState('');
   const [savingNote, setSavingNote] = useState(false);
@@ -233,19 +234,20 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      {/* Tab Navigation — Overview | Signals | Timeline | Notes */}
-      <div className="flex items-center gap-1 border-b ml-0 md:ml-11" style={{ borderColor: 'var(--border-primary)' }}>
-        {(['overview', 'signals', 'timeline', 'notes'] as const).map((tab) => (
+      {/* Tab Navigation — Overview | Signals | Timeline | Notes | Enrichment */}
+      <div className="flex items-center gap-1 border-b ml-0 md:ml-11 overflow-x-auto" style={{ borderColor: 'var(--border-primary)' }}>
+        {(['overview', 'signals', 'timeline', 'notes', 'enrichment'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => handleTabChange(tab)}
-            className="px-4 py-2.5 text-sm font-medium transition-all duration-200 border-b-2 -mb-px capitalize flex items-center gap-1.5"
+            className="px-4 py-2.5 text-sm font-medium transition-all duration-200 border-b-2 -mb-px capitalize flex items-center gap-1.5 whitespace-nowrap"
             style={{
               borderColor: activeTab === tab ? 'var(--brand-deep)' : 'transparent',
               color: activeTab === tab ? 'var(--brand-deep)' : 'var(--text-secondary)',
             }}
           >
             {tab === 'signals' && <Zap size={14} />}
+            {tab === 'enrichment' && <Search size={14} />}
             {tab}
             {tab === 'signals' && (liveSignalCount ?? signals.length) > 0 && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold text-white" style={{ backgroundColor: 'var(--brand-deep)' }}>
@@ -299,6 +301,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             refetch={refetch}
           />
         )}
+        {activeTab === 'enrichment' && (
+          <EnrichmentTab
+            leadId={id}
+            zipCode={property.zipCode || ''}
+            refetch={refetch}
+          />
+        )}
       </div>
 
       {/* Call Dialog */}
@@ -339,80 +348,6 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
   const [editingProperty, setEditingProperty] = useState(false);
   const [editingOwner, setEditingOwner] = useState(false);
   const [saving, setSaving] = useState(false);
-  // Data Enrichment — connectors available for this zip
-  const [enrichConnectors, setEnrichConnectors] = useState<any[]>([]);
-  const [enrichingSlug, setEnrichingSlug] = useState<string | null>(null);
-  const [enrichResults, setEnrichResults] = useState<Record<string, { found: boolean; signalsAdded: number; error?: string }>>({});
-  const [selectedEnrich, setSelectedEnrich] = useState<Set<string>>(new Set());
-  const [enrichingSelected, setEnrichingSelected] = useState(false);
-
-  useEffect(() => {
-    if (property.zipCode) {
-      fetch(`/api/connectors/coverage?zip=${property.zipCode}`)
-        .then((r) => r.json())
-        .then((data) => {
-          setEnrichConnectors(data.connectors || []);
-        })
-        .catch(() => setEnrichConnectors([]));
-    }
-  }, [property.zipCode]);
-
-  const handleEnrichCheck = async (slug: string) => {
-    setEnrichingSlug(slug);
-    try {
-      const res: any = await apiPost(`/api/leads/${leadId}/enrich`, {
-        connectorSlugs: [slug],
-      });
-      const result = res?.results?.[0];
-      if (result) {
-        setEnrichResults((prev) => ({ ...prev, [slug]: { found: result.found, signalsAdded: result.signalsAdded, error: result.error } }));
-      }
-      refetch();
-    } catch (err) {
-      console.error('Enrichment check error:', err);
-    } finally {
-      setEnrichingSlug(null);
-    }
-  };
-
-  const handleEnrichSelected = async () => {
-    if (selectedEnrich.size === 0) return;
-    setEnrichingSelected(true);
-    try {
-      const res: any = await apiPost(`/api/leads/${leadId}/enrich`, {
-        connectorSlugs: Array.from(selectedEnrich),
-      });
-      if (res?.results) {
-        const newResults: Record<string, any> = {};
-        for (const result of res.results) {
-          newResults[result.slug] = { found: result.found, signalsAdded: result.signalsAdded, error: result.error };
-        }
-        setEnrichResults((prev) => ({ ...prev, ...newResults }));
-      }
-      setSelectedEnrich(new Set());
-      refetch();
-    } catch (err) {
-      console.error('Bulk enrichment error:', err);
-    } finally {
-      setEnrichingSelected(false);
-    }
-  };
-
-  const toggleEnrichSelect = (slug: string) => {
-    setSelectedEnrich((prev) => {
-      const next = new Set(prev);
-      if (next.has(slug)) next.delete(slug); else next.add(slug);
-      return next;
-    });
-  };
-
-  const toggleEnrichSelectAll = () => {
-    if (selectedEnrich.size === enrichConnectors.length) {
-      setSelectedEnrich(new Set());
-    } else {
-      setSelectedEnrich(new Set(enrichConnectors.map((c: any) => c.slug)));
-    }
-  };
 
   // Property Details edit state
   const [propForm, setPropForm] = useState({
@@ -1018,96 +953,6 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
           )}
         </div>
 
-        {/* Data Enrichment */}
-        {enrichConnectors.length > 0 && (
-          <div className="ws-card p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-                <Search size={16} style={{ color: 'var(--brand-deep)' }} /> Data Enrichment
-              </h3>
-            </div>
-            <div className="space-y-2">
-              {/* Select All + Run Selected */}
-              <div
-                className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg border-b min-h-[46px]"
-                style={{ borderColor: 'var(--border-primary)' }}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedEnrich.size === enrichConnectors.length && enrichConnectors.length > 0}
-                  onChange={toggleEnrichSelectAll}
-                  className="rounded"
-                />
-                <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
-                  {selectedEnrich.size === enrichConnectors.length ? 'Deselect All' : 'Select All'}
-                </span>
-                {selectedEnrich.size > 0 && (
-                  <button
-                    onClick={handleEnrichSelected}
-                    disabled={enrichingSelected}
-                    className="ws-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1 ml-auto"
-                  >
-                    {enrichingSelected ? <Loader2 size={10} className="animate-spin" /> : <Search size={10} />}
-                    Run Selected ({selectedEnrich.size})
-                  </button>
-                )}
-              </div>
-              {enrichConnectors.map((connector: any) => {
-                const isChecking = enrichingSlug === connector.slug;
-                const result = enrichResults[connector.slug];
-                const isLive = connector.enrichmentMode === 'live_lookup';
-
-                return (
-                  <div
-                    key={connector.slug}
-                    className="flex items-center gap-2.5 p-2.5 rounded-lg"
-                    style={{ backgroundColor: 'var(--bg-elevated)' }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedEnrich.has(connector.slug)}
-                      onChange={() => toggleEnrichSelect(connector.slug)}
-                      className="rounded shrink-0"
-                    />
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <span className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-                        {connector.name}
-                      </span>
-                      <span
-                        className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap"
-                        style={{
-                          backgroundColor: isLive ? 'rgba(16, 185, 129, 0.1)' : 'rgba(107, 114, 128, 0.1)',
-                          color: isLive ? '#10b981' : '#6b7280',
-                        }}
-                      >
-                        {isLive ? 'Live Check' : 'Local Records'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {result && (
-                        <span
-                          className="text-[10px] font-medium"
-                          style={{ color: result.found ? 'var(--success, #10b981)' : 'var(--text-tertiary)' }}
-                        >
-                          {result.error ? 'Error' : result.found ? `Found (${result.signalsAdded} signal${result.signalsAdded !== 1 ? 's' : ''})` : 'Not found'}
-                        </span>
-                      )}
-                      <button
-                        onClick={() => handleEnrichCheck(connector.slug)}
-                        disabled={isChecking}
-                        className="ws-btn-ghost text-[10px] px-2 py-1 rounded flex items-center gap-1"
-                        title={`Check ${connector.name}`}
-                      >
-                        {isChecking ? <Loader2 size={10} className="animate-spin" /> : <Search size={10} />}
-                        Check
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Right Column - Score + Key Dates */}

@@ -78,6 +78,7 @@ export async function getLeadById(id: string) {
       notes: { orderBy: { createdAt: 'desc' } },
       region: true,
       handoffs: { include: { partner: true }, orderBy: { createdAt: 'desc' } },
+      _count: { select: { enrichmentLogs: true } },
     },
   });
 }

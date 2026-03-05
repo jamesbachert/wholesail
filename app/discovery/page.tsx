@@ -116,6 +116,11 @@ export default function DiscoveryPage() {
   const [promoting, setPromoting] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const [actionResult, setActionResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  // Manual import modal state
+  const [manualImportSource, setManualImportSource] = useState<any>(null);
+  const [manualImportData, setManualImportData] = useState('');
+  const [manualImporting, setManualImporting] = useState(false);
+  const [manualImportResult, setManualImportResult] = useState<any>(null);
 
   // Track which leads have been auto-marked as viewed this session (avoid repeat API calls)
   const viewedThisSession = useRef<Set<string>>(new Set());
@@ -229,9 +234,33 @@ export default function DiscoveryPage() {
     }
   }, [refetchLeads, refetchSources]);
 
-  // Sync All handler — skips disabled connectors
+  // Manual import handler
+  const handleManualImport = useCallback(async () => {
+    if (!manualImportSource || !manualImportData.trim()) return;
+    setManualImporting(true);
+    setManualImportResult(null);
+    try {
+      const res = await fetch('/api/discovery/manual-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectorSlug: manualImportSource.slug, data: manualImportData }),
+      });
+      const data = await res.json();
+      setManualImportResult(data);
+      if (data.success !== false) {
+        refetchLeads();
+        refetchSources();
+      }
+    } catch (err: any) {
+      setManualImportResult({ success: false, errorMessages: [err.message] });
+    } finally {
+      setManualImporting(false);
+    }
+  }, [manualImportSource, manualImportData, refetchLeads, refetchSources]);
+
+  // Sync All handler — skips disabled and manual_import connectors
   const handleSyncAll = useCallback(async () => {
-    const enabledSources = sources.filter((s: any) => !disabledSlugs.has(s.slug));
+    const enabledSources = sources.filter((s: any) => !disabledSlugs.has(s.slug) && s.mode !== 'manual_import');
     if (enabledSources.length === 0) return;
     setSyncing('__all__');
     setSyncResult(null);
@@ -482,14 +511,20 @@ export default function DiscoveryPage() {
                             <span className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>
                               {source.name}
                             </span>
-                            {source.lastSync?.status === 'success' && (
-                              <span className="ws-tag ws-tag-success text-[10px] shrink-0">Active</span>
-                            )}
-                            {source.lastSync?.status === 'error' && (
-                              <span className="ws-tag ws-tag-danger text-[10px] shrink-0">Error</span>
-                            )}
-                            {!source.lastSync && (
-                              <span className="ws-tag ws-tag-neutral text-[10px] shrink-0">Never Synced</span>
+                            {source.mode === 'manual_import' ? (
+                              <span className="ws-tag ws-tag-info text-[10px] shrink-0">Manual</span>
+                            ) : (
+                              <>
+                                {source.lastSync?.status === 'success' && (
+                                  <span className="ws-tag ws-tag-success text-[10px] shrink-0">Active</span>
+                                )}
+                                {source.lastSync?.status === 'error' && (
+                                  <span className="ws-tag ws-tag-danger text-[10px] shrink-0">Error</span>
+                                )}
+                                {!source.lastSync && (
+                                  <span className="ws-tag ws-tag-neutral text-[10px] shrink-0">Never Synced</span>
+                                )}
+                              </>
                             )}
                           </div>
                           {source.description && (
@@ -505,14 +540,25 @@ export default function DiscoveryPage() {
                             {timeAgo(source.lastSync.completedAt || source.lastSync.startedAt)} · {source.signalCount} signals
                           </span>
                         )}
-                        <button
-                          onClick={() => handleSync(source.slug)}
-                          disabled={syncing !== null || isDisabled}
-                          className="ws-btn-secondary text-[11px] flex items-center gap-1 py-1 px-2.5"
-                        >
-                          {syncing === source.slug ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                          {syncing === source.slug ? 'Syncing...' : 'Sync'}
-                        </button>
+                        {source.mode === 'manual_import' ? (
+                          <button
+                            onClick={() => { setManualImportSource(source); setManualImportData(''); setManualImportResult(null); }}
+                            disabled={isDisabled}
+                            className="ws-btn-secondary text-[11px] flex items-center gap-1 py-1 px-2.5"
+                          >
+                            <FileText size={12} />
+                            Import Data
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleSync(source.slug)}
+                            disabled={syncing !== null || isDisabled}
+                            className="ws-btn-secondary text-[11px] flex items-center gap-1 py-1 px-2.5"
+                          >
+                            {syncing === source.slug ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                            {syncing === source.slug ? 'Syncing...' : 'Sync'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -1140,6 +1186,87 @@ export default function DiscoveryPage() {
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Manual Import Modal */}
+      {manualImportSource && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setManualImportSource(null)}>
+          <div
+            className="ws-card w-full max-w-2xl mx-4 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  Import Data — {manualImportSource.name}
+                </h2>
+                <button
+                  onClick={() => setManualImportSource(null)}
+                  className="ws-btn-ghost text-xs px-2 py-1"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="rounded-lg p-3 mb-4" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  Copy data from the source website and paste it below. The system will parse addresses and create discovery records automatically.
+                </p>
+                {manualImportSource.sourceUrl && (
+                  <a
+                    href={manualImportSource.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium mt-1.5 inline-flex items-center gap-1"
+                    style={{ color: 'var(--brand-deep)' }}
+                  >
+                    Open source website <ArrowRight size={12} />
+                  </a>
+                )}
+              </div>
+
+              <textarea
+                value={manualImportData}
+                onChange={(e) => setManualImportData(e.target.value)}
+                placeholder="Paste data here (tab-delimited, CSV, or plain text with addresses)..."
+                rows={12}
+                className="ws-input w-full font-mono text-xs mb-4"
+                style={{ resize: 'vertical' }}
+              />
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleManualImport}
+                  disabled={manualImporting || !manualImportData.trim()}
+                  className="ws-btn-primary text-sm flex items-center gap-2"
+                >
+                  {manualImporting ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                  {manualImporting ? 'Processing...' : 'Process Data'}
+                </button>
+
+                {manualImportResult && (
+                  <div className="flex items-center gap-2">
+                    {manualImportResult.success !== false ? (
+                      <>
+                        <CheckCircle2 size={14} style={{ color: 'var(--success, #10b981)' }} />
+                        <span className="text-xs font-medium" style={{ color: 'var(--success, #10b981)' }}>
+                          {manualImportResult.total || 0} records — {manualImportResult.newCount || 0} new, {manualImportResult.updatedCount || 0} updated
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <XCircle size={14} style={{ color: 'var(--danger, #ef4444)' }} />
+                        <span className="text-xs font-medium" style={{ color: 'var(--danger, #ef4444)' }}>
+                          {manualImportResult.errorMessages?.[0] || manualImportResult.error || 'Import failed'}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
