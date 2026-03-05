@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { Suspense, useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Search,
   ArrowUpDown,
@@ -99,9 +100,18 @@ function getStatusFilterLabel(status: string) {
 }
 
 export default function DiscoveryPage() {
+  return (
+    <Suspense>
+      <DiscoveryPageInner />
+    </Suspense>
+  );
+}
+
+function DiscoveryPageInner() {
   const { activeRegion } = useRegion();
   const regionSlug = activeRegion?.slug || 'lehigh-valley';
-  const [searchQuery, setSearchQuery] = useState('');
+  const urlSearchParams = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(urlSearchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [minSourcesFilter, setMinSourcesFilter] = useState('');
@@ -124,6 +134,16 @@ export default function DiscoveryPage() {
   const [manualImportData, setManualImportData] = useState('');
   const [manualImporting, setManualImporting] = useState(false);
   const [manualImportResult, setManualImportResult] = useState<any>(null);
+
+  // Sync searchQuery from URL when navigating from global search
+  const urlSearch = urlSearchParams.get('search') || '';
+  useEffect(() => {
+    if (urlSearch && urlSearch !== searchQuery) {
+      setSearchQuery(urlSearch);
+      setCurrentPage(1);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlSearch]);
 
   // Track which leads have been auto-marked as viewed this session (avoid repeat API calls)
   const viewedThisSession = useRef<Set<string>>(new Set());

@@ -31,7 +31,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (search) {
-      where.address = { contains: search, mode: 'insensitive' };
+      where.OR = [
+        { address: { contains: search, mode: 'insensitive' } },
+        { city: { contains: search, mode: 'insensitive' } },
+        { zipCode: { startsWith: search } },
+      ];
     }
 
     // Filter by source (connector slug) via signals relation

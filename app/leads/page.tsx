@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { Suspense, useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   Search,
@@ -37,9 +38,18 @@ const statusFilters = ['ALL', 'NEW', 'CONTACTED', 'WARM', 'HOT', 'UNDER_CONTRACT
 const FILTERS_STORAGE_KEY = 'wholesail-leads-filters';
 
 export default function LeadsPage() {
+  return (
+    <Suspense>
+      <LeadsPageInner />
+    </Suspense>
+  );
+}
+
+function LeadsPageInner() {
   const { activeRegion } = useRegion();
   const regionSlug = activeRegion?.slug || '';
-  const [searchQuery, setSearchQuery] = useState('');
+  const urlSearchParams = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(urlSearchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sortField, setSortField] = useState<SortField>('totalScore');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -51,6 +61,16 @@ export default function LeadsPage() {
   const [showBulkEnrich, setShowBulkEnrich] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [filtersRestored, setFiltersRestored] = useState(false);
+
+  // Sync searchQuery from URL when navigating from global search
+  const urlSearch = urlSearchParams.get('search') || '';
+  useEffect(() => {
+    if (urlSearch && urlSearch !== searchQuery) {
+      setSearchQuery(urlSearch);
+      setCurrentPage(1);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlSearch]);
 
   // Restore filters from localStorage after hydration
   useEffect(() => {
