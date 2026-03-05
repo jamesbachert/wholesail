@@ -47,6 +47,8 @@ import { CallMode } from '@/components/leads/CallMode';
 import { TextDialog } from '@/components/leads/TextDialog';
 import { PropertyStoryTimeline } from '@/components/leads/PropertyStoryTimeline';
 import { StreetViewButton } from '@/components/leads/StreetViewModal';
+import { AbsenteeSignalDialog } from '@/components/leads/AbsenteeSignalDialog';
+import { isMailingDifferent } from '@/lib/address-compare';
 import { formatPhone, formatPhoneInput, stripPhone } from '@/lib/phone';
 
 const STATUS_OPTIONS = [
@@ -375,6 +377,8 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
   const [editingProperty, setEditingProperty] = useState(false);
   const [editingOwner, setEditingOwner] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showAbsenteeDialog, setShowAbsenteeDialog] = useState(false);
+  const [pendingMailingDisplay, setPendingMailingDisplay] = useState('');
 
   // Property Details edit state
   const [propForm, setPropForm] = useState({
@@ -442,12 +446,55 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
         },
       });
       setEditingOwner(false);
-      refetch();
+
+      // Check if mailing address differs from property address
+      const mailingStreet = ownerForm.ownerMailingAddress?.trim();
+      if (mailingStreet && isMailingDifferent(mailingStreet, property.address)) {
+        // Only prompt if absentee_owner signal isn't already active
+        const hasActiveAbsentee = (lead.signals || []).some(
+          (s: any) => s.signalType === 'absentee_owner' && s.isActive
+        );
+        if (!hasActiveAbsentee) {
+          const parts = [mailingStreet, [ownerForm.ownerCity, ownerForm.ownerState].filter(Boolean).join(', '), ownerForm.ownerZip].filter(Boolean);
+          setPendingMailingDisplay(parts.join(' '));
+          setShowAbsenteeDialog(true);
+        } else {
+          refetch();
+        }
+      } else {
+        refetch();
+      }
     } catch (err) {
       console.error('Failed to update owner:', err);
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleAbsenteeSignalSave = async (selectedTypes: string[]) => {
+    setShowAbsenteeDialog(false);
+    for (const signalType of selectedTypes) {
+      try {
+        const syncMap: Record<string, string> = {
+          absentee_owner: 'isAbsenteeOwner',
+          rental_property: 'isRentalProperty',
+        };
+        await fetch('/api/leads/signals', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'add',
+            leadId: lead.id,
+            signalType,
+            syncProperty: syncMap[signalType],
+            value: signalType === 'absentee_owner' ? `Mailing: ${ownerForm.ownerMailingAddress}` : undefined,
+          }),
+        });
+      } catch (err) {
+        console.error(`Failed to add ${signalType} signal:`, err);
+      }
+    }
+    refetch();
   };
 
   const cancelPropertyEdit = () => {
@@ -547,13 +594,13 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
       <div className="lg:col-span-2 space-y-4">
-        {/* Distress Signals Summary */}
+        {/* Motivation Signals Summary */}
         {signals.length > 0 && (
           <div className="ws-card p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
                 <Zap size={16} style={{ color: 'var(--brand-deep)' }} />
-                Distress Signals
+                Motivation Signals
                 <span className="text-xs font-normal" style={{ color: 'var(--text-tertiary)' }}>
                   ({signals.length} active)
                 </span>
@@ -1041,6 +1088,16 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
           </div>
         </div>
       </div>
+
+      {/* Absentee Signal Dialog */}
+      {showAbsenteeDialog && (
+        <AbsenteeSignalDialog
+          propertyAddress={property.address}
+          mailingAddress={pendingMailingDisplay}
+          onSave={(selected) => handleAbsenteeSignalSave(selected)}
+          onSkip={() => { setShowAbsenteeDialog(false); refetch(); }}
+        />
+      )}
     </div>
   );
 }
