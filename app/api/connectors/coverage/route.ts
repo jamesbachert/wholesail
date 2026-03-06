@@ -14,11 +14,30 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'zip parameter is required' }, { status: 400 });
     }
 
-    const connectors = getConnectorsForZip(zip);
+    let connectors = getConnectorsForZip(zip);
 
     if (connectors.length === 0) {
       return NextResponse.json({ connectors: [], zip });
     }
+
+    // Filter out disabled connectors
+    const regionSlugs = [...new Set(connectors.map((c) => c.regionSlug))];
+    const regions = await prisma.region.findMany({
+      where: { slug: { in: regionSlugs } },
+      select: { id: true, slug: true },
+    });
+    const regionIdMap = new Map(regions.map((r) => [r.slug, r.id]));
+    const disabledAssignments = await prisma.connectorRegionAssignment.findMany({
+      where: { isEnabled: false },
+      select: { connectorSlug: true, regionId: true },
+    });
+    const disabledSet = new Set(
+      disabledAssignments.map((a) => `${a.connectorSlug}:${a.regionId}`)
+    );
+    connectors = connectors.filter((c) => {
+      const regionId = regionIdMap.get(c.regionSlug);
+      return !regionId || !disabledSet.has(`${c.slug}:${regionId}`);
+    });
 
     // For import connectors (cross_reference mode), check if we have existing
     // SourceRecords for this zip so the UI can show "has data" indicators
@@ -67,6 +86,7 @@ export async function GET(request: NextRequest) {
       existingRecordCount: sourceRecordCounts[c.slug] || 0,
     }));
 
+    result.sort((a, b) => a.name.localeCompare(b.name));
     return NextResponse.json({ connectors: result, zip });
   } catch (error: any) {
     console.error('Coverage API error:', error);

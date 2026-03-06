@@ -109,8 +109,25 @@ function SourceSettings() {
     `/api/connectors/status?region=${activeRegionSlug}`
   );
   const [configModalSlug, setConfigModalSlug] = useState<string | null>(null);
+  const [togglingSlug, setTogglingSlug] = useState<string | null>(null);
 
   const connectors = connectorData?.connectors || [];
+
+  async function toggleConnector(slug: string, currentEnabled: boolean) {
+    setTogglingSlug(slug);
+    try {
+      await fetch(`/api/connectors/${slug}/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ regionSlug: activeRegionSlug, isEnabled: !currentEnabled }),
+      });
+      refetch();
+    } catch {
+      // Silent fail
+    } finally {
+      setTogglingSlug(null);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -136,8 +153,15 @@ function SourceSettings() {
         ) : (
           <div className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
             {connectors.length > 0 ? (
-              connectors.map((source: any) => (
-                <div key={source.slug} className="flex items-center gap-4 px-5 py-4 ws-table-row">
+              connectors.map((source: any) => {
+                const isEnabled = source.isEnabled !== false;
+                const isToggling = togglingSlug === source.slug;
+                return (
+                <div
+                  key={source.slug}
+                  className="flex items-center gap-4 px-5 py-4 ws-table-row"
+                  style={{ opacity: isEnabled ? 1 : 0.5 }}
+                >
                   <div
                     className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
                     style={{ backgroundColor: 'var(--bg-elevated)' }}
@@ -150,9 +174,14 @@ function SourceSettings() {
                     />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                      {source.name}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {source.name}
+                      </p>
+                      {!isEnabled && (
+                        <span className="ws-tag ws-tag-neutral text-[10px]">Disabled</span>
+                      )}
+                    </div>
                     <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                       {source.description}
                       {source.regionName && (
@@ -173,17 +202,36 @@ function SourceSettings() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {source.status === 'ACTIVE' && (
+                    {isEnabled && source.status === 'ACTIVE' && (
                       <span className="ws-tag ws-tag-success text-[10px]">Active</span>
                     )}
-                    {source.status === 'ERROR' && (
+                    {isEnabled && source.status === 'ERROR' && (
                       <span className="ws-tag ws-tag-danger text-[10px]">
                         <AlertCircle size={10} /> Error
                       </span>
                     )}
-                    {source.status === 'PENDING' && (
+                    {isEnabled && source.status === 'PENDING' && (
                       <span className="ws-tag ws-tag-neutral text-[10px]">Ready</span>
                     )}
+                    {/* Enable/Disable toggle */}
+                    <button
+                      onClick={() => toggleConnector(source.slug, isEnabled)}
+                      disabled={isToggling}
+                      className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none"
+                      style={{
+                        backgroundColor: isEnabled ? 'var(--brand-deep)' : 'var(--border-primary)',
+                        opacity: isToggling ? 0.6 : 1,
+                      }}
+                      title={isEnabled ? 'Disable connector' : 'Enable connector'}
+                    >
+                      <span
+                        className="pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200 ease-in-out"
+                        style={{
+                          transform: isEnabled ? 'translateX(16px)' : 'translateX(2px)',
+                          marginTop: '2px',
+                        }}
+                      />
+                    </button>
                     <button
                       onClick={() => setConfigModalSlug(source.slug)}
                       className="ws-btn-ghost p-2 rounded-lg"
@@ -193,7 +241,8 @@ function SourceSettings() {
                     </button>
                   </div>
                 </div>
-              ))
+                );
+              })
             ) : (
               <div className="px-5 py-8 text-center">
                 <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
@@ -300,10 +349,9 @@ function ConnectorConfigModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ regionIds: Array.from(enabledRegionIds) }),
       });
-      setSaved(true);
+      onClose();
     } catch {
       // Silent fail — user can retry
-    } finally {
       setSaving(false);
     }
   };

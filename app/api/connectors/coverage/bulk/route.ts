@@ -13,7 +13,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'zipCodes array is required' }, { status: 400 });
     }
 
-    const entries = getConnectorsForZips(zipCodes);
+    let entries = getConnectorsForZips(zipCodes);
+
+    // Filter out disabled connectors
+    const regionSlugs = [...new Set(entries.map((e) => e.coverage.regionSlug))];
+    const regions = await prisma.region.findMany({
+      where: { slug: { in: regionSlugs } },
+      select: { id: true, slug: true },
+    });
+    const regionIdMap = new Map(regions.map((r) => [r.slug, r.id]));
+    const disabledAssignments = await prisma.connectorRegionAssignment.findMany({
+      where: { isEnabled: false },
+      select: { connectorSlug: true, regionId: true },
+    });
+    const disabledSet = new Set(
+      disabledAssignments.map((a) => `${a.connectorSlug}:${a.regionId}`)
+    );
+    entries = entries.filter((e) => {
+      const regionId = regionIdMap.get(e.coverage.regionSlug);
+      return !regionId || !disabledSet.has(`${e.coverage.slug}:${regionId}`);
+    });
 
     // For cross-reference connectors, check if we have existing data
     const crossRefSlugs = entries
@@ -68,8 +87,8 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    // Sort by matching lead count descending
-    connectors.sort((a, b) => b.matchingLeadCount - a.matchingLeadCount);
+    // Sort by name alphabetically
+    connectors.sort((a, b) => a.name.localeCompare(b.name));
 
     return NextResponse.json({ connectors });
   } catch (error: any) {

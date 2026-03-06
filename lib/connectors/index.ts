@@ -8,6 +8,7 @@ import { NorthamptonSheriffSalesConnector } from './pa/lehigh-valley/northampton
 // NOTE: All LV connectors live in pa/lehigh-valley/ (no separate pa/northampton/ folder)
 import { AllentownCodeViolationsConnector } from './pa/lehigh-valley/allentown-code-violations';
 import { AllentownRentalLicensesConnector } from './pa/lehigh-valley/allentown-rental-licenses';
+import { AllentownTaxParcelsConnector } from './pa/lehigh-valley/allentown-tax-parcels';
 import { LehighEliteRevenueTaxConnector } from './pa/lehigh-valley/elite-revenue-tax-lookup';
 import { AllentownAraBlightConnector } from './pa/lehigh-valley/allentown-ara-blight';
 import { BerksParcelAssessmentConnector, BerksCamaMasterConnector } from './pa/berks-lancaster';
@@ -61,6 +62,7 @@ export function getAllConnectorSlugs(): string[] {
 
 const lookupConnectors: LookupConnector[] = [
   new AllentownRentalLicensesConnector(),
+  new AllentownTaxParcelsConnector(),
   new LehighEliteRevenueTaxConnector(),
   // Pennsylvania — Berks-Lancaster
   new BerksParcelAssessmentConnector(),

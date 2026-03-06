@@ -10,21 +10,25 @@ export async function GET(request: NextRequest) {
     // Get all registered connectors
     let connectors = getConnectorInfo();
 
-    // Filter by region assignments from the database (if region specified)
+    // Build a map of connector slug → isEnabled from assignments
+    let enabledMap = new Map<string, boolean>();
+
     if (regionSlug) {
+      // Filter to connectors matching this region
+      connectors = connectors.filter((c) => c.regionSlug === regionSlug);
+
       const region = await prisma.region.findUnique({
         where: { slug: regionSlug },
       });
 
       if (region) {
-        // Get enabled connector-region assignments for this region
+        // Get all assignments for this region (enabled and disabled)
         const assignments = await prisma.connectorRegionAssignment.findMany({
-          where: { regionId: region.id, isEnabled: true },
+          where: { regionId: region.id },
         });
-        const enabledSlugs = new Set(assignments.map((a) => a.connectorSlug));
-
-        // Filter to only connectors assigned to this region
-        connectors = connectors.filter((c) => enabledSlugs.has(c.slug));
+        for (const a of assignments) {
+          enabledMap.set(a.connectorSlug, a.isEnabled);
+        }
       }
     }
 
@@ -39,8 +43,11 @@ export async function GET(request: NextRequest) {
     // Merge connector info with DB status
     const result = connectors.map((c) => {
       const ds = dataSources.find((d) => d.slug === c.slug);
+      // Default to enabled if no assignment exists
+      const isEnabled = enabledMap.has(c.slug) ? enabledMap.get(c.slug)! : true;
       return {
         ...c,
+        isEnabled,
         status: ds?.status || 'PENDING',
         lastRun: ds?.lastRun || null,
         lastSuccess: ds?.lastSuccess || null,

@@ -20,7 +20,22 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const region = searchParams.get('region') || 'lehigh-valley';
 
-    const connectors = getDiscoveryCapableConnectors(region);
+    const allDiscoveryConnectors = getDiscoveryCapableConnectors(region);
+
+    // Filter out disabled connectors
+    const regionRecord = await prisma.region.findUnique({
+      where: { slug: region },
+      select: { id: true },
+    });
+    let disabledSlugs = new Set<string>();
+    if (regionRecord) {
+      const disabledAssignments = await prisma.connectorRegionAssignment.findMany({
+        where: { regionId: regionRecord.id, isEnabled: false },
+        select: { connectorSlug: true },
+      });
+      disabledSlugs = new Set(disabledAssignments.map((a) => a.connectorSlug));
+    }
+    const connectors = allDiscoveryConnectors.filter((c) => !disabledSlugs.has(c.slug));
 
     const sources = await Promise.all(
       connectors.map(async (connector) => {
@@ -63,7 +78,8 @@ export async function GET(request: NextRequest) {
     );
 
     // Enrichment connectors (lookup-based)
-    const lookupConnectors = getLookupConnectorsForRegion(region);
+    const allLookupConnectors = getLookupConnectorsForRegion(region);
+    const lookupConnectors = allLookupConnectors.filter((c) => !disabledSlugs.has(c.slug));
 
     const enrichmentSources = await Promise.all(
       lookupConnectors.map(async (connector) => {
