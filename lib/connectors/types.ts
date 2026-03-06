@@ -44,6 +44,7 @@ export interface ParsedRecord {
     points: number;
     value?: string;
     source?: string;
+    eventDate?: string; // ISO date or parseable date string for timeline events
   }>;
   rawData: Record<string, any>;
 }

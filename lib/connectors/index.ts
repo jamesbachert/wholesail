@@ -31,7 +31,7 @@ interface RegisteredConnector {
 const importConnectors: RegisteredConnector[] = [
   // Pennsylvania — Lehigh Valley
   { connector: new LehighSheriffSalesConnector(), mode: 'discovery' },
-  { connector: new LehighRepositoryConnector(), mode: 'import' },
+  { connector: new LehighRepositoryConnector(), mode: 'both' },
   { connector: new NorthamptonSheriffSalesConnector(), mode: 'manual_import' },
   { connector: new AllentownCodeViolationsConnector(), mode: 'discovery' },
   // Pennsylvania — Berks-Lancaster

@@ -87,6 +87,25 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
   return pageTexts.join('\n');
 }
 
+/**
+ * Parse a date string like "6/26/25" or "12/1/2024" into an ISO date string.
+ * Repository PDF uses M/D/YY format.
+ */
+function parseDateAdded(dateStr: string): string | undefined {
+  const match = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (!match) return undefined;
+
+  let [, monthStr, dayStr, yearStr] = match;
+  let year = parseInt(yearStr);
+  if (year < 100) {
+    year += year > 50 ? 1900 : 2000;
+  }
+
+  const d = new Date(year, parseInt(monthStr) - 1, parseInt(dayStr));
+  if (isNaN(d.getTime())) return undefined;
+  return d.toISOString();
+}
+
 export class LehighRepositoryConnector implements DataSourceConnector {
   name = 'Lehigh County Tax Claim Repository';
   slug = 'lehigh-tax-repository';
@@ -254,13 +273,14 @@ export class LehighRepositoryConnector implements DataSourceConnector {
               signals: [
                 {
                   signalType: 'tax_delinquent',
-                  label: 'Tax Delinquent (Repository)',
+                  label: 'Tax Delinquent',
                   category: 'automated',
                   points: 18,
                   value: dateAdded
                     ? `In repository since ${dateAdded}`
                     : 'In tax claim repository — years of unpaid taxes',
                   source: 'Lehigh County Tax Claim Bureau',
+                  eventDate: dateAdded ? parseDateAdded(dateAdded) : undefined,
                 },
               ],
               rawData: {

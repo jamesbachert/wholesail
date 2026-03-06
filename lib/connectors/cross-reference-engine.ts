@@ -11,6 +11,27 @@ import { getConnectorCoverage } from './coverage-registry';
 // Used when the user selects import connectors during lead entry.
 // ============================================================
 
+/**
+ * Parse a date field that may be in M/D/YY, M/D/YYYY, or ISO format.
+ * Returns a Date or null.
+ */
+function parseDateField(dateStr: string): Date | null {
+  // Try M/D/YY or M/D/YYYY format (used by tax repository)
+  const match = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (match) {
+    let [, monthStr, dayStr, yearStr] = match;
+    let year = parseInt(yearStr);
+    if (year < 100) {
+      year += year > 50 ? 1900 : 2000;
+    }
+    const d = new Date(year, parseInt(monthStr) - 1, parseInt(dayStr));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  // Fallback: try native Date parse (ISO strings, etc.)
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export interface CrossReferenceResult {
   slug: string;
   name: string;
@@ -188,7 +209,9 @@ export async function crossReferenceEnrich(
               ? new Date(rawData.salesDate)
               : rawData.openedDate
                 ? new Date(rawData.openedDate)
-                : null,
+                : rawData.dateAdded
+                  ? parseDateField(rawData.dateAdded)
+                  : null,
           },
         });
         signalsAdded++;

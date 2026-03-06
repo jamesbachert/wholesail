@@ -129,7 +129,11 @@ export async function importRecords(
                 isAutomated: true,
                 isLocked: true,
                 isActive: true,
-                eventDate: record.saleDate ? new Date(record.saleDate) : null,
+                eventDate: signal.eventDate
+                  ? new Date(signal.eventDate)
+                  : record.saleDate
+                    ? new Date(record.saleDate)
+                    : null,
               },
             });
             signalsAdded = true;
@@ -140,7 +144,11 @@ export async function importRecords(
                 where: { id: existingSignal.id },
                 data: {
                   value: signal.value,
-                  eventDate: record.saleDate ? new Date(record.saleDate) : existingSignal.eventDate,
+                  eventDate: signal.eventDate
+                    ? new Date(signal.eventDate)
+                    : record.saleDate
+                      ? new Date(record.saleDate)
+                      : existingSignal.eventDate,
                 },
               });
             }

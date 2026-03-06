@@ -22,7 +22,7 @@ interface PropertyStoryTimelineProps {
 export function PropertyStoryTimeline({ property, signals }: PropertyStoryTimelineProps) {
   const events = buildPropertyStory(property, signals);
 
-  if (events.length < 2) {
+  if (events.length === 0) {
     return (
       <div className="ws-card p-5">
         <div className="flex items-center gap-2 mb-3">
@@ -48,7 +48,7 @@ export function PropertyStoryTimeline({ property, signals }: PropertyStoryTimeli
           </h3>
         </div>
         <span className="text-[11px] font-medium" style={{ color: 'var(--text-tertiary)' }}>
-          {events.length} events
+          {events.length} {events.length === 1 ? 'event' : 'events'}
         </span>
       </div>
       <div className="relative pl-4">
