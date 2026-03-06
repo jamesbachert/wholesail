@@ -2,58 +2,71 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
 // POST /api/leads/backfill-tax-dates
-// Scans all tax_delinquent signals with null eventDate and extracts
-// the date from the value text ("In repository since M/D/YY").
+// Fixes tax_delinquent signals:
+//   1. Backfills missing eventDate from value text ("In repository since M/D/YY")
+//   2. Normalizes labels to "Tax Delinquent" (removes old "(Repository)" suffix)
 export async function POST(request: NextRequest) {
   try {
-    // Find all tax_delinquent signals missing eventDate
+    // Find all active tax_delinquent signals
     const signals = await prisma.leadSignal.findMany({
       where: {
         signalType: 'tax_delinquent',
         isActive: true,
-        eventDate: null,
       },
     });
 
-    let updated = 0;
+    let datesUpdated = 0;
+    let labelsUpdated = 0;
     let skippedNoDate = 0;
     let errors = 0;
 
     for (const signal of signals) {
-      // Extract date from value like "In repository since 6/26/25"
-      const dateMatch = signal.value?.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})/);
+      const updates: Record<string, any> = {};
 
-      if (!dateMatch) {
-        skippedNoDate++;
-        continue;
+      // Fix missing eventDate
+      if (!signal.eventDate) {
+        const dateMatch = signal.value?.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})/);
+        if (dateMatch) {
+          const parsed = parseDateStr(dateMatch[1]);
+          if (parsed) {
+            updates.eventDate = parsed;
+            datesUpdated++;
+          } else {
+            skippedNoDate++;
+          }
+        } else {
+          skippedNoDate++;
+        }
       }
 
-      const parsed = parseDateStr(dateMatch[1]);
-      if (!parsed) {
-        skippedNoDate++;
-        continue;
+      // Normalize label — remove "(Repository)" suffix
+      if (signal.label !== 'Tax Delinquent') {
+        updates.label = 'Tax Delinquent';
+        labelsUpdated++;
       }
 
-      try {
-        await prisma.leadSignal.update({
-          where: { id: signal.id },
-          data: { eventDate: parsed },
-        });
-        updated++;
-      } catch (err) {
-        console.error(`[Backfill Tax Dates] Error updating signal ${signal.id}:`, err);
-        errors++;
+      if (Object.keys(updates).length > 0) {
+        try {
+          await prisma.leadSignal.update({
+            where: { id: signal.id },
+            data: updates,
+          });
+        } catch (err) {
+          console.error(`[Backfill Tax] Error updating signal ${signal.id}:`, err);
+          errors++;
+        }
       }
     }
 
     return NextResponse.json({
       totalSignalsScanned: signals.length,
-      updated,
+      datesUpdated,
+      labelsUpdated,
       skippedNoDate,
       errors,
     });
   } catch (error: any) {
-    console.error('[Backfill Tax Dates] Fatal error:', error);
+    console.error('[Backfill Tax] Fatal error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
