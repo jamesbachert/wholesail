@@ -32,7 +32,7 @@ async function main() {
   console.log(`✅ Region: ${region.name}`);
 
   // ============================================================
-  // 17 SCORING WEIGHTS — 4 Categories
+  // 18 SCORING WEIGHTS — 4 Categories
   // ============================================================
   const signals = [
     // DISTRESS (6 signals)
@@ -40,26 +40,27 @@ async function main() {
     { signalType: 'probate',            label: 'Probate / Estate',         weight: 38, category: 'distress',   sortOrder: 2,  description: 'Property owner deceased, estate in probate' },
     { signalType: 'tax_delinquent',     label: 'Tax Delinquent',           weight: 32, category: 'distress',   sortOrder: 3,  description: 'Delinquent property taxes, tax claim or repository' },
     { signalType: 'divorce',            label: 'Divorce – Recent Filing or Finalized', weight: 28, category: 'distress',   sortOrder: 4,  description: 'Divorce filing involving property owner' },
-    { signalType: 'code_violation',     label: 'Code Violation',           weight: 22, category: 'distress',   sortOrder: 5,  description: 'Active code violations or condemnation' },
-    { signalType: 'liens_judgments',    label: 'Liens / Judgments',        weight: 18, category: 'distress',   sortOrder: 6,  description: 'Active liens or judgments against property or owner' },
+    { signalType: 'upset_sale',         label: 'Upset Sale',               weight: 25, category: 'distress',   sortOrder: 5,  description: 'Property listed for upset tax sale — 2+ years of unpaid taxes' },
+    { signalType: 'code_violation',     label: 'Code Violation',           weight: 22, category: 'distress',   sortOrder: 6,  description: 'Active code violations or condemnation' },
+    { signalType: 'liens_judgments',    label: 'Liens / Judgments',        weight: 18, category: 'distress',   sortOrder: 7,  description: 'Active liens or judgments against property or owner' },
 
     // OWNERSHIP (5 signals)
-    { signalType: 'owner_deceased',     label: 'Owner Deceased',           weight: 35, category: 'ownership',  sortOrder: 7,  description: 'Property owner recently deceased' },
-    { signalType: 'inherited',          label: 'Inherited Property',       weight: 25, category: 'ownership',  sortOrder: 8,  description: 'Property was inherited by current owner' },
-    { signalType: 'absentee_owner',     label: 'Absentee Owner',           weight: 22, category: 'ownership',  sortOrder: 9,  description: 'Owner mailing address differs from property address' },
-    { signalType: 'out_of_state_owner', label: 'Out-of-State Owner',       weight: 15, category: 'ownership',  sortOrder: 10, description: 'Owner resides in a different state' },
-    { signalType: 'tired_landlord',     label: 'Tired Landlord',           weight: 18, category: 'ownership',  sortOrder: 11, description: 'Landlord with multiple properties showing distress signals' },
+    { signalType: 'owner_deceased',     label: 'Owner Deceased',           weight: 35, category: 'ownership',  sortOrder: 8,  description: 'Property owner recently deceased' },
+    { signalType: 'inherited',          label: 'Inherited Property',       weight: 25, category: 'ownership',  sortOrder: 9,  description: 'Property was inherited by current owner' },
+    { signalType: 'absentee_owner',     label: 'Absentee Owner',           weight: 22, category: 'ownership',  sortOrder: 10, description: 'Owner mailing address differs from property address' },
+    { signalType: 'out_of_state_owner', label: 'Out-of-State Owner',       weight: 15, category: 'ownership',  sortOrder: 11, description: 'Owner resides in a different state' },
+    { signalType: 'tired_landlord',     label: 'Tired Landlord',           weight: 18, category: 'ownership',  sortOrder: 12, description: 'Landlord with multiple properties showing distress signals' },
 
     // FINANCIAL (4 signals)
-    { signalType: 'bankruptcy',         label: 'Bankruptcy',               weight: 30, category: 'financial',  sortOrder: 12, description: 'Property owner has active bankruptcy filing' },
-    { signalType: 'high_equity',        label: 'High Equity',              weight: 16, category: 'financial',  sortOrder: 13, description: 'Estimated equity exceeds 50% of property value' },
-    { signalType: 'free_and_clear',     label: 'Owned Free & Clear',       weight: 12, category: 'financial',  sortOrder: 14, description: 'No mortgage — owner has 100% equity' },
-    { signalType: 'job_loss',           label: 'Job Loss / Income Drop',   weight: 20, category: 'financial',  sortOrder: 15, description: 'Owner experiencing job loss or significant income reduction' },
+    { signalType: 'bankruptcy',         label: 'Bankruptcy',               weight: 30, category: 'financial',  sortOrder: 13, description: 'Property owner has active bankruptcy filing' },
+    { signalType: 'high_equity',        label: 'High Equity',              weight: 16, category: 'financial',  sortOrder: 14, description: 'Estimated equity exceeds 50% of property value' },
+    { signalType: 'free_and_clear',     label: 'Owned Free & Clear',       weight: 12, category: 'financial',  sortOrder: 15, description: 'No mortgage — owner has 100% equity' },
+    { signalType: 'job_loss',           label: 'Job Loss / Income Drop',   weight: 20, category: 'financial',  sortOrder: 16, description: 'Owner experiencing job loss or significant income reduction' },
 
     // CONDITION (3 signals)
-    { signalType: 'vacant',             label: 'Vacant Property',          weight: 25, category: 'condition',  sortOrder: 16, description: 'Property appears vacant (USPS, utility, or visual confirmation)' },
-    { signalType: 'fire_flood_damage',  label: 'Fire / Flood Damage',      weight: 20, category: 'condition',  sortOrder: 17, description: 'Property sustained fire, flood, or major weather damage' },
-    { signalType: 'deferred_maintenance', label: 'Deferred Maintenance',   weight: 12, category: 'condition',  sortOrder: 18, description: 'Visible neglect, overgrown, boarded windows, roof damage' },
+    { signalType: 'vacant',             label: 'Vacant Property',          weight: 25, category: 'condition',  sortOrder: 17, description: 'Property appears vacant (USPS, utility, or visual confirmation)' },
+    { signalType: 'fire_flood_damage',  label: 'Fire / Flood Damage',      weight: 20, category: 'condition',  sortOrder: 18, description: 'Property sustained fire, flood, or major weather damage' },
+    { signalType: 'deferred_maintenance', label: 'Deferred Maintenance',   weight: 12, category: 'condition',  sortOrder: 19, description: 'Visible neglect, overgrown, boarded windows, roof damage' },
   ];
 
   for (const signal of signals) {
@@ -211,6 +212,7 @@ Would it be okay if I followed up with you next week? Or if you'd prefer, I can 
   const connectorSlugs = [
     'lehigh-sheriff-sales',
     'lehigh-tax-repository',
+    'lehigh-upset-sale',
     'northampton-sheriff-sales',
     'allentown-code-violations',
     'allentown-rental-licenses',

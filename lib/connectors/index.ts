@@ -3,10 +3,12 @@ import { LookupConnector } from './lookup-types';
 import { DiscoveryRecord } from './discovery-engine';
 import { LehighSheriffSalesConnector } from './pa/lehigh-valley/lehigh-sheriff-sales';
 import { LehighRepositoryConnector } from './pa/lehigh-valley/lehigh-tax-repository';
+import { LehighUpsetSaleConnector } from './pa/lehigh-valley/lehigh-upset-sale';
 import { NorthamptonSheriffSalesConnector } from './pa/lehigh-valley/northampton-sheriff-sales';
 // NOTE: All LV connectors live in pa/lehigh-valley/ (no separate pa/northampton/ folder)
 import { AllentownCodeViolationsConnector } from './pa/lehigh-valley/allentown-code-violations';
 import { AllentownRentalLicensesConnector } from './pa/lehigh-valley/allentown-rental-licenses';
+import { LehighEliteRevenueTaxConnector } from './pa/lehigh-valley/elite-revenue-tax-lookup';
 import { AllentownAraBlightConnector } from './pa/lehigh-valley/allentown-ara-blight';
 import { BerksParcelAssessmentConnector, BerksCamaMasterConnector } from './pa/berks-lancaster';
 
@@ -32,6 +34,7 @@ const importConnectors: RegisteredConnector[] = [
   // Pennsylvania — Lehigh Valley
   { connector: new LehighSheriffSalesConnector(), mode: 'discovery' },
   { connector: new LehighRepositoryConnector(), mode: 'both' },
+  { connector: new LehighUpsetSaleConnector(), mode: 'both' },
   { connector: new NorthamptonSheriffSalesConnector(), mode: 'manual_import' },
   { connector: new AllentownCodeViolationsConnector(), mode: 'discovery' },
   // Pennsylvania — Berks-Lancaster
@@ -58,6 +61,7 @@ export function getAllConnectorSlugs(): string[] {
 
 const lookupConnectors: LookupConnector[] = [
   new AllentownRentalLicensesConnector(),
+  new LehighEliteRevenueTaxConnector(),
   // Pennsylvania — Berks-Lancaster
   new BerksParcelAssessmentConnector(),
   new BerksCamaMasterConnector(),

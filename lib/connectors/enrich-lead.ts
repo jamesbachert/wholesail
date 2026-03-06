@@ -4,6 +4,7 @@ import { checkRentalLicense } from './rental-lookup-engine';
 import { checkCodeViolations } from './code-violation-lookup-engine';
 import { checkParcelAssessment } from './parcel-assessment-lookup-engine';
 import { enrichWithCamaData } from './cama-lookup-engine';
+import { checkTaxDelinquent } from './tax-delinquent-lookup-engine';
 
 // ============================================================
 // SHARED ENRICHMENT DISPATCH
@@ -55,6 +56,19 @@ export async function enrichLeadWithConnector(
           name: coverage.name,
           found: result.found,
           signalsAdded: result.isAbsenteeOwner ? 1 : 0,
+          error: result.error,
+        };
+      } catch (err: any) {
+        return { slug, name: coverage.name, found: false, signalsAdded: 0, error: err.message };
+      }
+    } else if (coverage.connectorKind === 'tax_delinquent') {
+      try {
+        const result = await checkTaxDelinquent(leadId);
+        return {
+          slug,
+          name: coverage.name,
+          found: result.found,
+          signalsAdded: result.found ? 1 : 0,
           error: result.error,
         };
       } catch (err: any) {

@@ -74,6 +74,25 @@ const SIGNAL_MAP: Record<string, {
     },
     buildSource: () => 'Cross-reference enrichment',
   },
+  upset_sale: {
+    signalType: 'upset_sale',
+    label: 'Upset Sale',
+    category: 'distress',
+    defaultPoints: 25,
+    buildValue: (raw) => {
+      const price = raw.upsetPrice;
+      const result = raw.saleResult;
+      let text = price
+        ? `Upset sale — ${price} unpaid taxes`
+        : 'Listed for upset tax sale — 2+ years of unpaid taxes';
+      if (result) {
+        const isNoBid = result.toLowerCase().includes('no bid');
+        if (isNoBid) text += ' (no bid — advancing to Judicial Sale)';
+      }
+      return text;
+    },
+    buildSource: () => 'Cross-reference enrichment',
+  },
   code_violation: {
     signalType: 'code_violation',
     label: 'Code Violation',

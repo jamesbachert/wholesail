@@ -54,6 +54,7 @@ const CONNECTOR_LABELS: Record<string, string> = {
   'northampton-sheriff-sales': 'Sheriff Sales (Northampton)',
   'allentown-code-violations': 'Code Violations',
   'lehigh-tax-repository': 'Tax Repository',
+  'lehigh-upset-sale': 'Upset Sale',
   'allentown-rental-licenses': 'Rental Licenses',
 };
 

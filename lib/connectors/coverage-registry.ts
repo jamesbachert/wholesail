@@ -137,6 +137,16 @@ const COVERAGE: ConnectorCoverage[] = [
     enrichmentMode: 'cross_reference',
     supportedZipCodes: LEHIGH_COUNTY_ZIPS,
   },
+  {
+    slug: 'lehigh-upset-sale',
+    name: 'Lehigh County Upset Sale',
+    type: 'import',
+    connectorKind: 'upset_sale',
+    description: 'Properties with 2+ years of unpaid taxes listed for upset sale by the Tax Claim Bureau.',
+    regionSlug: 'lehigh-valley',
+    enrichmentMode: 'cross_reference',
+    supportedZipCodes: LEHIGH_COUNTY_ZIPS,
+  },
   // Pennsylvania — Northampton County
   {
     slug: 'northampton-sheriff-sales',
@@ -178,6 +188,16 @@ const COVERAGE: ConnectorCoverage[] = [
     regionSlug: 'lehigh-valley',
     enrichmentMode: 'live_lookup',
     supportedZipCodes: ALLENTOWN_ZIPS,
+  },
+  {
+    slug: 'lehigh-elite-revenue-tax',
+    name: 'Lehigh County Tax Delinquent Lookup',
+    type: 'lookup',
+    connectorKind: 'tax_delinquent',
+    description: 'Real-time delinquent tax lookup via Elite Revenue Solutions for all Lehigh County parcels.',
+    regionSlug: 'lehigh-valley',
+    enrichmentMode: 'live_lookup',
+    supportedZipCodes: LEHIGH_COUNTY_ZIPS,
   },
   {
     slug: 'allentown-ara-blight',

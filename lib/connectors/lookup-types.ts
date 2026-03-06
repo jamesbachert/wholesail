@@ -5,7 +5,7 @@
 // Unlike import connectors, they don't create new leads.
 // ============================================================
 
-export type LookupConnectorType = 'rental_license' | 'code_violation' | 'parcel_assessment' | 'cama_data';
+export type LookupConnectorType = 'rental_license' | 'code_violation' | 'parcel_assessment' | 'cama_data' | 'tax_delinquent';
 
 export interface RentalLicenseLookupResult {
   found: boolean;
@@ -70,7 +70,22 @@ export interface CamaDataLookupResult {
   rawData: Record<string, any>;
 }
 
-export type LookupResult = RentalLicenseLookupResult | CodeViolationLookupResult | ParcelAssessmentLookupResult | CamaDataLookupResult;
+export interface TaxDelinquentLookupResult {
+  found: boolean;
+  parcelNumber?: string;
+  ownerName?: string;
+  propertyAddress?: string;
+  district?: string;
+  assessedValue?: number;
+  totalDelinquent?: number;
+  delinquentYears?: Array<{
+    year: number;
+    balance: number;
+  }>;
+  rawData: Record<string, any>;
+}
+
+export type LookupResult = RentalLicenseLookupResult | CodeViolationLookupResult | ParcelAssessmentLookupResult | CamaDataLookupResult | TaxDelinquentLookupResult;
 
 export interface LookupConnector {
   name: string;

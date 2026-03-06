@@ -47,7 +47,8 @@ async function main() {
     { signalType: 'tax_delinquent', label: 'Tax Delinquent', category: 'automated', weight: 18, description: 'Property has delinquent taxes', sortOrder: 2 },
     { signalType: 'probate', label: 'Probate / Estate', category: 'automated', weight: 20, description: 'Owner deceased, property in probate', sortOrder: 3 },
     { signalType: 'divorce', label: 'Divorce – Recent Filing or Finalized', category: 'automated', weight: 16, description: 'Owner has a recent divorce filing', sortOrder: 4 },
-    { signalType: 'code_violation', label: 'Code Violation', category: 'automated', weight: 10, description: 'Property has municipal code violations', sortOrder: 5 },
+    { signalType: 'upset_sale', label: 'Upset Sale', category: 'distress', weight: 25, description: 'Property listed for upset tax sale — 2+ years of unpaid taxes', sortOrder: 5 },
+    { signalType: 'code_violation', label: 'Code Violation', category: 'automated', weight: 10, description: 'Property has municipal code violations', sortOrder: 6 },
     { signalType: 'absentee_owner', label: 'Absentee Owner', category: 'automated', weight: 8, description: 'Owner does not live at the property', sortOrder: 6 },
     { signalType: 'high_equity', label: 'High Equity', category: 'automated', weight: 12, description: 'Estimated equity above 40% of value', sortOrder: 7 },
     { signalType: 'vacant', label: 'Vacant Property', category: 'automated', weight: 10, description: 'Property appears to be vacant', sortOrder: 8 },
@@ -77,6 +78,7 @@ async function main() {
   const connectorSlugs = [
     'lehigh-sheriff-sales',
     'lehigh-tax-repository',
+    'lehigh-upset-sale',
     'northampton-sheriff-sales',
     'allentown-code-violations',
     'allentown-rental-licenses',

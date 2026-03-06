@@ -36,6 +36,7 @@ const SIGNAL_OPTIONS = [
   { type: 'pre_foreclosure', label: 'Pre-Foreclosure', category: 'distress' },
   { type: 'probate', label: 'Probate / Estate', category: 'distress' },
   { type: 'tax_delinquent', label: 'Tax Delinquent', category: 'distress' },
+  { type: 'upset_sale', label: 'Upset Sale', category: 'distress' },
   { type: 'bankruptcy', label: 'Bankruptcy', category: 'financial' },
   { type: 'divorce', label: 'Divorce', category: 'distress' },
   { type: 'code_violation', label: 'Code Violation', category: 'distress' },
