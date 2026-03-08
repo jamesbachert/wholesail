@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { normalizeAddress } from '@/lib/connectors/address-utils';
 import { recalculateScore } from '@/lib/connectors/scoring';
+import { getNewLeadThresholdDays } from '@/lib/settings';
 
 // POST /api/leads — create a new lead manually
 export async function POST(request: NextRequest) {
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
       data: {
         propertyId: property.id,
         regionId: region.id,
-        status: 'NEW',
+        status: 'COLD',
       },
     });
 
@@ -175,6 +176,7 @@ export async function GET(request: NextRequest) {
     const minArv = searchParams.get('minArv');
     const maxArv = searchParams.get('maxArv');
     const timeSensitiveOnly = searchParams.get('timeSensitive');
+    const needsReviewOnly = searchParams.get('needsReview');
     const hasPhone = searchParams.get('hasPhone');
     const priority = searchParams.get('priority');
     const minCodeViolations = parseInt(searchParams.get('minCodeViolations') || '0');
@@ -198,9 +200,13 @@ export async function GET(request: NextRequest) {
       where.status = status;
     }
 
-    // Exclude archived unless specifically requested
-    if (!searchParams.get('includeArchived')) {
+    // Exclude archived unless specifically requested, filtering by archive status, or filtering by needsReview
+    if (!searchParams.get('includeArchived') && status !== 'ARCHIVE' && needsReviewOnly !== 'true') {
       where.archivedAt = null;
+      // Also exclude by status for legacy leads that were archived before archivedAt was tracked
+      if (!where.status) {
+        where.status = { not: 'ARCHIVE' };
+      }
     }
 
     // Date filters
@@ -225,6 +231,25 @@ export async function GET(request: NextRequest) {
 
     // Time sensitive
     if (timeSensitiveOnly === 'true') where.isTimeSensitive = true;
+
+    // Needs review
+    if (needsReviewOnly === 'true') {
+      where.needsReview = true;
+      where.needsReviewDismissedAt = null;
+    }
+
+    // "New" computed filter — leads that haven't been viewed or were recently created
+    const isNew = searchParams.get('isNew');
+    let thresholdDays = 14;
+    if (isNew === 'true') {
+      thresholdDays = await getNewLeadThresholdDays();
+      const newCutoff = new Date();
+      newCutoff.setDate(newCutoff.getDate() - thresholdDays);
+      where.OR = [
+        { firstViewedAt: null },
+        { createdAt: { gte: newCutoff } },
+      ];
+    }
 
     // City filter (on property)
     if (cities) {
@@ -276,11 +301,24 @@ export async function GET(request: NextRequest) {
     }
 
     // Sort mapping
-    const orderBy: any = {};
-    if (sortBy === 'createdAt') orderBy.createdAt = sortDir;
-    else if (sortBy === 'lastActivityAt') orderBy.lastActivityAt = sortDir;
-    else if (sortBy === 'address') orderBy.property = { address: sortDir };
-    else orderBy.totalScore = sortDir;
+    const prioritizeTS = searchParams.get('prioritizeTimeSensitive') === 'true';
+    let orderBy: any;
+
+    if (prioritizeTS) {
+      // Multi-field sort: time-sensitive leads first, then by score/field
+      const secondary: any = {};
+      if (sortBy === 'createdAt') secondary.createdAt = sortDir;
+      else if (sortBy === 'lastActivityAt') secondary.lastActivityAt = sortDir;
+      else if (sortBy === 'address') secondary.property = { address: sortDir };
+      else secondary.totalScore = sortDir;
+      orderBy = [{ isTimeSensitive: 'desc' }, secondary];
+    } else {
+      orderBy = {};
+      if (sortBy === 'createdAt') orderBy.createdAt = sortDir;
+      else if (sortBy === 'lastActivityAt') orderBy.lastActivityAt = sortDir;
+      else if (sortBy === 'address') orderBy.property = { address: sortDir };
+      else orderBy.totalScore = sortDir;
+    }
 
     // When filtering by code violation count, fetch all matching leads first
     // then post-filter (Prisma can't do HAVING on related record counts)
@@ -341,6 +379,11 @@ const availableZipCodes = [...new Set(filterOptions.map((p) => p.zipCode))]
   .filter(Boolean)
   .sort();
 
+    // Always include threshold for "New" badge computation client-side
+    if (!thresholdDays || thresholdDays === 14) {
+      thresholdDays = await getNewLeadThresholdDays();
+    }
+
     return NextResponse.json({
       leads,
       total,
@@ -351,6 +394,7 @@ const availableZipCodes = [...new Set(filterOptions.map((p) => p.zipCode))]
         cities: availableCities,
         zipCodes: availableZipCodes,
       },
+      newLeadThresholdDays: thresholdDays,
     });
   } catch (error: any) {
     console.error('Leads API error:', error);

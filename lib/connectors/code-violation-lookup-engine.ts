@@ -1,6 +1,8 @@
 import { prisma } from '../prisma';
 import { getLookupConnectorForZip } from './lookup-registry';
 import { recalculateScore } from './scoring';
+import { flagTimeSensitiveIfNewDistress } from './flag-time-sensitive';
+import { flagArchivedLeadIfNewSignal } from './flag-archived-reactivation';
 import { CodeViolationLookupResult } from './lookup-types';
 
 // ============================================================
@@ -80,6 +82,18 @@ export async function checkCodeViolations(leadId: string): Promise<CodeViolation
           isActive: true,
         },
       });
+
+      // Flag lead as time-sensitive for new distress signal
+      await flagTimeSensitiveIfNewDistress(
+        lead.id,
+        weightDef?.category ?? 'distress',
+        'Code Violation',
+        signalValue,
+        'code_violation',
+      );
+
+      // Flag archived leads for reactivation review
+      await flagArchivedLeadIfNewSignal(lead.id, 'Code Violation');
     } else {
       // Update existing signal value with latest data
       await prisma.leadSignal.update({

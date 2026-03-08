@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import {
   TrendingUp,
   Phone,
@@ -13,6 +14,7 @@ import {
   Calendar,
   CheckCircle2,
   Loader2,
+  Info,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useApi } from '@/lib/hooks';
@@ -20,22 +22,29 @@ import {
   getScoreColorHex,
   getStatusLabel,
   getSignalTagColor,
+  shortenSignalLabel,
   formatCurrency,
 } from '@/lib/mockData';
 import { StreetViewButton } from '@/components/leads/StreetViewModal';
 
 export default function DashboardPage() {
+  const [activeTab, setActiveTab] = useState<'priority' | 'review'>('priority');
+
   const { data: liveLeadsData, loading: leadsLoading } = useApi<any>(
-    '/api/leads?sortBy=totalScore&sortDir=desc&limit=5'
+    '/api/leads?sortBy=totalScore&sortDir=desc&limit=5&prioritizeTimeSensitive=true'
+  );
+  const { data: reviewLeadsData, loading: reviewLoading } = useApi<any>(
+    '/api/leads?needsReview=true&sortBy=totalScore&sortDir=desc&limit=5'
   );
   const { data: liveStats, loading: statsLoading } = useApi<any>('/api/dashboard');
 
   const stats = liveStats || {};
   const priorityLeads = (liveLeadsData as any)?.leads?.slice(0, 5) || [];
+  const reviewLeads = (reviewLeadsData as any)?.leads?.slice(0, 5) || [];
 
   const followUpsDue = priorityLeads.filter((l: any) => l.nextFollowUp);
 
-  const isLoading = leadsLoading || statsLoading;
+  const isLoading = leadsLoading || statsLoading || (activeTab === 'review' && reviewLoading);
 
   // Helper to normalize lead data shape
   const normalizeLead = (lead: any) => {
@@ -71,7 +80,7 @@ export default function DashboardPage() {
         <StatCard
           label="Total Leads"
           value={(stats.totalLeads || 0).toLocaleString()}
-          subtext={`+${stats.newThisWeek || 0} this week`}
+          subtext={`${stats.newCount || 0} new`}
           icon={Users}
           trend="up"
         />
@@ -100,98 +109,178 @@ export default function DashboardPage() {
 
       {/* Two Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-        {/* Priority Leads - takes 2 cols */}
+        {/* Priority / Review Leads - takes 2 cols */}
         <div className="lg:col-span-2">
           <div className="ws-card">
+            {/* Tab Header */}
             <div
-              className="flex items-center justify-between px-5 py-4 border-b"
+              className="flex items-center justify-between px-5 py-3 border-b"
               style={{ borderColor: 'var(--border-primary)' }}
             >
-              <div className="flex items-center gap-2">
-                <Flame size={18} style={{ color: 'var(--brand-deep)' }} />
-                <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
-                  Today&apos;s Priority Leads
-                </h2>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setActiveTab('priority')}
+                  className="flex items-center gap-1.5 px-3 h-[30px] rounded-lg text-sm font-medium transition-colors duration-200"
+                  style={{
+                    backgroundColor: activeTab === 'priority' ? 'rgba(245, 158, 11, 0.1)' : 'transparent',
+                    color: activeTab === 'priority' ? '#F59E0B' : 'var(--text-tertiary)',
+                    border: activeTab === 'priority' ? '1px solid rgba(245, 158, 11, 0.25)' : '1px solid var(--border-primary)',
+                  }}
+                >
+                  <Flame size={14} />
+                  Priority Leads
+                </button>
+                <button
+                  onClick={() => setActiveTab('review')}
+                  className="flex items-center gap-1.5 px-3 h-[30px] rounded-lg text-sm font-medium transition-colors duration-200"
+                  style={{
+                    backgroundColor: activeTab === 'review' ? 'rgba(245, 158, 11, 0.1)' : 'transparent',
+                    color: activeTab === 'review' ? '#F59E0B' : 'var(--text-tertiary)',
+                    border: activeTab === 'review' ? '1px solid rgba(245, 158, 11, 0.25)' : '1px solid var(--border-primary)',
+                  }}
+                >
+                  <Info size={14} />
+                  Needs Review
+                  {reviewLeads.length > 0 && (
+                    <span
+                      className="ml-0.5 text-[10px] font-bold leading-none px-1.5 py-0.5 rounded-full"
+                      style={{ backgroundColor: 'var(--warning)', color: 'white' }}
+                    >
+                      {reviewLeads.length}
+                    </span>
+                  )}
+                </button>
               </div>
               <Link
-                href="/leads"
+                href={activeTab === 'priority' ? '/leads' : '/leads?needsReview=true'}
                 className="text-xs font-medium transition-colors duration-200 hover:underline"
                 style={{ color: 'var(--brand-ocean)' }}
               >
-                View all →
+                View all leads →
               </Link>
             </div>
+
+            {/* Lead List */}
             <div className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
-              {priorityLeads.length > 0 ? (
-                priorityLeads.map((lead: any) => {
-                  const l = normalizeLead(lead);
-                  const signals = l.signals || [];
-                  return (
-                    <div key={l.id} className="flex items-center gap-4 px-5 py-3.5 ws-table-row">
-                      <Link
-                        href={`/leads/${l.id}`}
-                        className="flex items-center gap-4 flex-1 min-w-0"
-                      >
-                        <div
-                          className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
-                          style={{ backgroundColor: getScoreColorHex(l.totalScore) }}
+              {activeTab === 'priority' ? (
+                // Priority Leads tab
+                priorityLeads.length > 0 ? (
+                  priorityLeads.map((lead: any) => {
+                    const l = normalizeLead(lead);
+                    const signals = l.signals || [];
+                    return (
+                      <div key={l.id} className="flex items-center gap-4 px-5 py-3.5 ws-table-row">
+                        <Link
+                          href={`/leads/${l.id}`}
+                          className="flex items-center gap-4 flex-1 min-w-0"
                         >
-                          {l.totalScore}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
-                              {l.property.address}
+                          <div
+                            className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
+                            style={{ backgroundColor: getScoreColorHex(l.totalScore) }}
+                          >
+                            {l.totalScore}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                                {l.property.address}
+                              </p>
+                              {l.isTimeSensitive && !l.timeSensitiveDismissedAt && (
+                                <span className="ws-tag ws-tag-danger text-[10px]">
+                                  <AlertTriangle size={10} /> Time Sensitive
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }}>
+                              {l.property.city} · {l.property.ownerName || '—'} · {formatCurrency(l.property.estimatedValue)}
                             </p>
-                            {l.isTimeSensitive && (
-                              <span className="ws-tag ws-tag-danger text-[10px]">
-                                <AlertTriangle size={10} /> Urgent
+                          </div>
+                          <div className="hidden md:flex items-center gap-1.5 shrink-0">
+                            {signals.slice(0, 2).map((s: any, i: number) => (
+                              <span
+                                key={i}
+                                className={`ws-tag ws-tag-${getSignalTagColor(s.signalType)} text-[10px]`}
+                              >
+                                {shortenSignalLabel(s.label)}
+                              </span>
+                            ))}
+                            {signals.length > 2 && (
+                              <span className="ws-tag ws-tag-neutral text-[10px]">
+                                +{signals.length - 2}
                               </span>
                             )}
                           </div>
+                          <div className="hidden sm:block shrink-0">
+                            <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                              {getStatusLabel(l.status)}
+                            </span>
+                          </div>
+                        </Link>
+                        <StreetViewButton
+                          address={l.property.address}
+                          city={l.property.city}
+                          state={l.property.state}
+                          zipCode={l.property.zipCode}
+                          latitude={l.property.latitude}
+                          longitude={l.property.longitude}
+                          size={14}
+                        />
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="px-5 py-8 text-center">
+                    <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                      {isLoading ? '' : 'No leads in database yet. Import your first leads to get started.'}
+                    </p>
+                  </div>
+                )
+              ) : (
+                // Needs Review tab
+                reviewLeads.length > 0 ? (
+                  reviewLeads.map((lead: any) => {
+                    const l = normalizeLead(lead);
+                    let reviewSummary = '';
+                    try {
+                      const parsed = JSON.parse(l.needsReviewReason || '{}');
+                      reviewSummary = parsed.summary || l.needsReviewReason || '';
+                    } catch {
+                      reviewSummary = l.needsReviewReason || '';
+                    }
+
+                    return (
+                      <Link
+                        key={l.id}
+                        href={`/leads/${l.id}`}
+                        className="flex items-center gap-4 px-5 py-3.5 ws-table-row"
+                      >
+                        <div
+                          className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)' }}
+                        >
+                          <Info size={18} style={{ color: 'var(--warning)' }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                            {l.property.address}
+                          </p>
                           <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }}>
-                            {l.property.city} · {l.property.ownerName || '—'} · {formatCurrency(l.property.estimatedValue)}
+                            {reviewSummary}
                           </p>
                         </div>
-                        <div className="hidden md:flex items-center gap-1.5 shrink-0">
-                          {signals.slice(0, 2).map((s: any, i: number) => (
-                            <span
-                              key={i}
-                              className={`ws-tag ws-tag-${getSignalTagColor(s.signalType)} text-[10px]`}
-                            >
-                              {s.label}
-                            </span>
-                          ))}
-                          {signals.length > 2 && (
-                            <span className="ws-tag ws-tag-neutral text-[10px]">
-                              +{signals.length - 2}
-                            </span>
-                          )}
-                        </div>
                         <div className="hidden sm:block shrink-0">
-                          <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
-                            {getStatusLabel(l.status)}
-                          </span>
+                          <span className="ws-tag ws-tag-warning text-[10px]">Review</span>
                         </div>
                       </Link>
-                      <StreetViewButton
-                        address={l.property.address}
-                        city={l.property.city}
-                        state={l.property.state}
-                        zipCode={l.property.zipCode}
-                        latitude={l.property.latitude}
-                        longitude={l.property.longitude}
-                        size={14}
-                      />
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="px-5 py-8 text-center">
-                  <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                    {isLoading ? '' : 'No leads in database yet. Import your first leads to get started.'}
-                  </p>
-                </div>
+                    );
+                  })
+                ) : (
+                  <div className="px-5 py-8 text-center">
+                    <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                      {reviewLoading ? '' : 'No leads need review right now.'}
+                    </p>
+                  </div>
+                )
               )}
             </div>
           </div>
@@ -279,7 +368,7 @@ export default function DashboardPage() {
               Pipeline
             </h3>
             <div className="space-y-2.5">
-              <PipelineRow label="New" count={stats.newThisWeek || 0} total={Math.max(stats.totalLeads || 1, 1)} color="var(--brand-cyan)" />
+              <PipelineRow label="Cold" count={stats.cold || 0} total={Math.max(stats.totalLeads || 1, 1)} color="var(--brand-cyan)" />
               <PipelineRow label="Contacted" count={stats.contacted || 0} total={Math.max(stats.totalLeads || 1, 1)} color="var(--brand-ocean)" />
               <PipelineRow label="Warm" count={stats.warm || 0} total={Math.max(stats.totalLeads || 1, 1)} color="var(--warning)" />
               <PipelineRow label="Hot" count={stats.hot || 0} total={Math.max(stats.totalLeads || 1, 1)} color="var(--danger)" />

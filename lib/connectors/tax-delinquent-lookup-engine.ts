@@ -1,6 +1,8 @@
 import { prisma } from '../prisma';
 import { getLookupConnectorForZip } from './lookup-registry';
 import { recalculateScore } from './scoring';
+import { flagTimeSensitiveIfNewDistress } from './flag-time-sensitive';
+import { flagArchivedLeadIfNewSignal } from './flag-archived-reactivation';
 import { TaxDelinquentLookupResult } from './lookup-types';
 import { LehighEliteRevenueTaxConnector } from './pa/lehigh-valley/elite-revenue-tax-lookup';
 
@@ -143,6 +145,18 @@ export async function checkTaxDelinquent(
           eventDate: null, // Ongoing — no single event date
         },
       });
+
+      // Flag lead as time-sensitive for new distress signal
+      await flagTimeSensitiveIfNewDistress(
+        lead.id,
+        weightDef?.category ?? 'distress',
+        'Tax Delinquent',
+        signalValue,
+        'tax_delinquent',
+      );
+
+      // Flag archived leads for reactivation review
+      await flagArchivedLeadIfNewSignal(lead.id, 'Tax Delinquent');
     } else {
       // Update existing signal with fresh data
       await prisma.leadSignal.update({

@@ -7,10 +7,20 @@ import { prisma } from '@/lib/prisma';
 // with lead counts per connector for bulk enrichment UI.
 export async function POST(request: NextRequest) {
   try {
-    const { zipCodes, leadCountsByZip } = await request.json();
+    const { zipCodes: providedZips, leadCountsByZip, regionSlug } = await request.json();
 
-    if (!zipCodes || !Array.isArray(zipCodes) || zipCodes.length === 0) {
-      return NextResponse.json({ error: 'zipCodes array is required' }, { status: 400 });
+    // Resolve zip codes: either provided directly or looked up from region
+    let zipCodes: string[] = providedZips || [];
+    if ((!zipCodes || zipCodes.length === 0) && regionSlug) {
+      const region = await prisma.region.findFirst({
+        where: { slug: regionSlug, isActive: true },
+        select: { zipCodes: true },
+      });
+      if (region) zipCodes = region.zipCodes;
+    }
+
+    if (!zipCodes || zipCodes.length === 0) {
+      return NextResponse.json({ error: 'zipCodes array or regionSlug is required' }, { status: 400 });
     }
 
     let entries = getConnectorsForZips(zipCodes);

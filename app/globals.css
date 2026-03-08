@@ -226,6 +226,16 @@ body {
     color: #1B98A8;
   }
 
+  .ws-tag-ownership {
+    background-color: rgba(59, 130, 246, 0.1);
+    color: #3B82F6;
+  }
+
+  .ws-tag-financial {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: #10B981;
+  }
+
   .ws-tag-neutral {
     background-color: var(--bg-elevated);
     color: var(--text-secondary);
@@ -241,7 +251,7 @@ body {
     @apply w-1.5 h-1.5 rounded-full;
   }
 
-  .ws-status-new::before { background-color: var(--brand-cyan); }
+  .ws-status-cold::before { background-color: var(--brand-cyan); }
   .ws-status-contacted::before { background-color: var(--brand-ocean); }
   .ws-status-warm::before { background-color: var(--warning); }
   .ws-status-hot::before { background-color: var(--danger); }

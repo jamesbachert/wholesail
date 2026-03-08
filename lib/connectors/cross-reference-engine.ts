@@ -1,6 +1,8 @@
 import { prisma } from '../prisma';
 import { normalizeAddress } from './address-utils';
 import { recalculateScore } from './scoring';
+import { flagTimeSensitiveIfNewDistress } from './flag-time-sensitive';
+import { flagArchivedLeadIfNewSignal } from './flag-archived-reactivation';
 import { syncPropertyFlags } from './import-engine';
 import { getConnectorCoverage } from './coverage-registry';
 
@@ -234,6 +236,18 @@ export async function crossReferenceEnrich(
           },
         });
         signalsAdded++;
+
+        // Flag lead as time-sensitive for new distress signal
+        await flagTimeSensitiveIfNewDistress(
+          lead.id,
+          weightDef?.category ?? signalDef.category,
+          signalDef.label,
+          signalValue,
+          signalDef.signalType,
+        );
+
+        // Flag archived leads for reactivation review
+        await flagArchivedLeadIfNewSignal(lead.id, signalDef.label);
 
         // Keep signals list in sync for dedup within the same batch
         lead.signals.push({

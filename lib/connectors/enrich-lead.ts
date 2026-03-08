@@ -50,7 +50,7 @@ export async function enrichLeadWithConnector(
       }
     } else if (coverage.connectorKind === 'parcel_assessment') {
       try {
-        const result = await checkParcelAssessment(leadId);
+        const result = await checkParcelAssessment(leadId, slug);
         return {
           slug,
           name: coverage.name,

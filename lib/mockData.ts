@@ -50,7 +50,7 @@ export function getScoreColorHex(score: number): string {
 
 export function getStatusLabel(status: string): string {
   const map: Record<string, string> = {
-    NEW: 'New',
+    COLD: 'Cold',
     CONTACTED: 'Contacted',
     WARM: 'Warm',
     HOT: 'Hot',
@@ -65,7 +65,7 @@ export function getStatusLabel(status: string): string {
 
 export function getStatusColor(status: string): string {
   const map: Record<string, string> = {
-    NEW: 'info',
+    COLD: 'info',
     CONTACTED: 'info',
     WARM: 'warning',
     HOT: 'danger',
@@ -105,12 +105,26 @@ export function timeAgo(dateStr: string): string {
 }
 
 export function getSignalTagColor(signalType: string): string {
-  const urgentSignals = ['pre_foreclosure', 'probate', 'tax_delinquent', 'lien_stacking', 'code_violation', 'owner_willing', 'owner_timeline'];
-  const warningSignals = ['divorce', 'inherited', 'owner_life_event', 'property_condition'];
-  const infoSignals = ['absentee_owner', 'vacant', 'expired_listing', 'owner_responsive', 'rental_property'];
+  // Matches the 4 categories in SignalsTab for consistent colors
+  const distressSignals = ['pre_foreclosure', 'probate', 'tax_delinquent', 'upset_sale', 'divorce', 'code_violation', 'liens_judgments', 'lien_stacking'];
+  const ownershipSignals = ['owner_deceased', 'inherited', 'absentee_owner', 'out_of_state_owner', 'tired_landlord', 'rental_property', 'long_term_owner', 'owner_willing', 'owner_timeline', 'owner_responsive', 'owner_life_event'];
+  const financialSignals = ['bankruptcy', 'high_equity', 'free_and_clear', 'job_loss'];
+  const conditionSignals = ['vacant', 'fire_flood_damage', 'deferred_maintenance', 'property_condition', 'expired_listing'];
 
-  if (urgentSignals.includes(signalType)) return 'danger';
-  if (warningSignals.includes(signalType)) return 'warning';
-  if (infoSignals.includes(signalType)) return 'info';
+  if (distressSignals.includes(signalType)) return 'danger';
+  if (ownershipSignals.includes(signalType)) return 'ownership';
+  if (financialSignals.includes(signalType)) return 'financial';
+  if (conditionSignals.includes(signalType)) return 'neutral';
   return 'neutral';
+}
+
+/** Shorten verbose signal labels for pill display.
+ *  e.g. "Long-Term Owner (20+ Years)" → "Long-Term Owner"
+ *  e.g. "Absentee Owner (Tenant Occupied)" → "Absentee Owner"
+ *  e.g. "Rental Property (Section 8)" → "Rental Property"  */
+export function shortenSignalLabel(label: string): string {
+  if (label.startsWith('Long-Term Owner')) return 'Long-Term Owner';
+  if (label.startsWith('Absentee Owner')) return 'Absentee Owner';
+  if (label.startsWith('Rental Property')) return 'Rental Property';
+  return label;
 }

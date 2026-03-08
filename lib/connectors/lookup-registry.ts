@@ -2,6 +2,7 @@ import { LookupConnector, LookupConnectorType } from './lookup-types';
 import { AllentownRentalLicensesConnector } from './pa/lehigh-valley/allentown-rental-licenses';
 import { AllentownCodeViolationsConnector } from './pa/lehigh-valley/allentown-code-violations';
 import { AllentownTaxParcelsConnector } from './pa/lehigh-valley/allentown-tax-parcels';
+import { LehighCountyTaxParcelsConnector } from './pa/lehigh-valley/lehigh-county-tax-parcels';
 import { LehighEliteRevenueTaxConnector } from './pa/lehigh-valley/elite-revenue-tax-lookup';
 import { BerksParcelAssessmentConnector, BerksCamaMasterConnector } from './pa/berks-lancaster';
 
@@ -15,6 +16,7 @@ const lookupConnectors: LookupConnector[] = [
   new AllentownRentalLicensesConnector(),
   new AllentownCodeViolationsConnector(),
   new AllentownTaxParcelsConnector(),
+  new LehighCountyTaxParcelsConnector(),
   new LehighEliteRevenueTaxConnector(),
   // Pennsylvania — Berks-Lancaster
   new BerksParcelAssessmentConnector(),

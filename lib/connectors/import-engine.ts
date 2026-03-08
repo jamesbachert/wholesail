@@ -1,6 +1,8 @@
 import { prisma } from '../prisma';
 import { ConnectorResult, ParsedRecord } from './types';
 import { recalculateScore } from './scoring';
+import { flagTimeSensitiveIfNewDistress } from './flag-time-sensitive';
+import { flagArchivedLeadIfNewSignal } from './flag-archived-reactivation';
 import { normalizeAddress } from './address-utils';
 
 // Signal types that allow multiple instances per lead (dedup by value, not type)
@@ -137,6 +139,18 @@ export async function importRecords(
               },
             });
             signalsAdded = true;
+
+            // Flag lead as time-sensitive for new distress signal (existing lead stacking)
+            await flagTimeSensitiveIfNewDistress(
+              property.lead.id,
+              weightDef?.category ?? signal.category,
+              signal.label,
+              signal.value,
+              signal.signalType,
+            );
+
+            // Flag archived leads for reactivation review
+            await flagArchivedLeadIfNewSignal(property.lead.id, signal.label);
           } else {
             // Signal exists — update value if changed (e.g. new case number)
             if (existingSignal.value !== signal.value && signal.value) {
@@ -181,7 +195,7 @@ export async function importRecords(
           data: {
             propertyId: property.id,
             regionId: region.id,
-            status: 'NEW',
+            status: 'COLD',
             isTimeSensitive: !!record.saleDate,
             timeSensitiveReason: record.saleDate
               ? `Event scheduled: ${record.saleDate}`
@@ -236,7 +250,7 @@ export async function importRecords(
           data: {
             propertyId: newProperty.id,
             regionId: region.id,
-            status: 'NEW',
+            status: 'COLD',
             isTimeSensitive: !!record.saleDate,
             timeSensitiveReason: record.saleDate
               ? `Event scheduled: ${record.saleDate}`

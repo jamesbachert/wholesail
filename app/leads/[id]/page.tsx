@@ -28,6 +28,7 @@ import {
   X,
   Search,
   Trash2,
+  Info,
   Calculator,
   ChevronDown,
 } from 'lucide-react';
@@ -36,6 +37,7 @@ import {
   getScoreColorHex,
   getStatusLabel,
   getSignalTagColor,
+  shortenSignalLabel,
   formatCurrency,
   formatDate,
   formatDateTime,
@@ -52,7 +54,7 @@ import { isMailingDifferent } from '@/lib/address-compare';
 import { formatPhone, formatPhoneInput, stripPhone } from '@/lib/phone';
 
 const STATUS_OPTIONS = [
-  { value: 'NEW', label: 'New' },
+  { value: 'COLD', label: 'Cold' },
   { value: 'CONTACTED', label: 'Contacted' },
   { value: 'WARM', label: 'Warm' },
   { value: 'HOT', label: 'Hot' },
@@ -75,12 +77,20 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [showCallDialog, setShowCallDialog] = useState(false);
   const [showTextDialog, setShowTextDialog] = useState(false);
   const [liveSignalCount, setLiveSignalCount] = useState<number | null>(null);
+  const [alertDismissed, setAlertDismissed] = useState(false);
+  const [reviewDismissed, setReviewDismissed] = useState(false);
 
   // Keep signal count badge in sync with fresh lead data (e.g. after enrichment refetch)
   useEffect(() => {
     if (lead?.signals) {
       const count = lead.signals.filter((s: any) => s.isActive !== false).length;
       setLiveSignalCount(count);
+    }
+    if (lead?.timeSensitiveDismissedAt) {
+      setAlertDismissed(true);
+    }
+    if (lead?.needsReviewDismissedAt) {
+      setReviewDismissed(true);
     }
   }, [lead]);
 
@@ -122,9 +132,9 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const activeSignals = signals.filter((s: any) => s.isActive !== false);
   const distressSignals = activeSignals.filter((s: any) => s.category === 'distress');
 
-  // Time-sensitive: only show if the deadline/event is in the future
+  // Time-sensitive: only show if the deadline/event is in the future AND not dismissed
   const isTimeSensitiveCurrent = (() => {
-    if (!lead.isTimeSensitive) return false;
+    if (!lead.isTimeSensitive || alertDismissed) return false;
     // Check explicit deadline field first
     if (lead.timeSensitiveDeadline) {
       return new Date(lead.timeSensitiveDeadline) >= new Date();
@@ -137,6 +147,48 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     // No date to check — show it
     return true;
   })();
+
+  const handleDismissReview = async () => {
+    setReviewDismissed(true);
+    try {
+      await fetch(`/api/leads/${lead.id}/dismiss-review`, { method: 'POST' });
+    } catch {
+      // Dismiss visually even if API fails
+    }
+  };
+
+  const handleClearStaleContacts = async () => {
+    setReviewDismissed(true);
+    try {
+      await fetch(`/api/leads/${lead.id}/clear-stale-contacts`, { method: 'POST' });
+      refetch(); // Reload to reflect cleared fields
+    } catch {
+      // Dismiss visually even if API fails
+    }
+  };
+
+  const handleReactivateLead = async () => {
+    try {
+      // Move from Archive back to Cold
+      await apiPatch(`/api/leads/${lead.id}`, { status: 'COLD' });
+      // Dismiss the review banner
+      await fetch(`/api/leads/${lead.id}/dismiss-review`, { method: 'POST' });
+      setReviewDismissed(true);
+      refetch();
+    } catch {
+      // Dismiss visually even if API fails
+      setReviewDismissed(true);
+    }
+  };
+
+  const handleDismissAlert = async () => {
+    setAlertDismissed(true);
+    try {
+      await fetch(`/api/leads/${lead.id}/dismiss-alert`, { method: 'POST' });
+    } catch {
+      // Dismiss visually even if API fails
+    }
+  };
 
   const handleAddNote = async () => {
     if (!newNote.trim()) return;
@@ -166,13 +218,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
       {/* Back + Header */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-3">
-          <Link
-            href="/leads"
+          <button
+            onClick={() => router.back()}
             className="p-2 rounded-lg transition-colors duration-200 hover:bg-[var(--bg-elevated)]"
             style={{ color: 'var(--text-secondary)' }}
           >
             <ArrowLeft size={20} />
-          </Link>
+          </button>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-xl md:text-2xl font-bold font-display" style={{ color: 'var(--text-primary)' }}>
@@ -187,10 +239,18 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
               {isTimeSensitiveCurrent && (
                 <span className="ws-tag ws-tag-danger"><AlertTriangle size={12} /> Time Sensitive</span>
               )}
+              {lead.needsReview && !reviewDismissed && (
+                <span className="ws-tag ws-tag-warning"><Info size={12} /> Needs Review</span>
+              )}
             </div>
             <p className="text-sm mt-0.5" style={{ color: 'var(--text-secondary)' }}>
               {property.city}, {property.state} {property.zipCode}
               {property.county ? ` · ${property.county} County` : ''}
+              {lead.leadSource && (
+                <span className="ml-2 text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-tertiary)' }}>
+                  {lead.leadSource}
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -224,18 +284,123 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
-      {/* Time Sensitive Banner — only show for current/future events */}
+      {/* Time Sensitive Banner — only show for current/future events, dismissible */}
       {isTimeSensitiveCurrent && lead.timeSensitiveReason && (
         <div className="ws-card p-4 border-l-4 ml-0 md:ml-11" style={{ borderLeftColor: 'var(--danger)' }}>
           <div className="flex items-start gap-2">
             <AlertTriangle size={16} style={{ color: 'var(--danger)' }} className="shrink-0 mt-0.5" />
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Time-Sensitive Lead</p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>{lead.timeSensitiveReason}</p>
             </div>
+            <button
+              onClick={handleDismissAlert}
+              className="shrink-0 p-1 rounded hover:bg-white/10 transition-colors"
+              title="Dismiss alert"
+            >
+              <X size={14} style={{ color: 'var(--text-tertiary)' }} />
+            </button>
           </div>
         </div>
       )}
+
+      {/* Needs Review Banner — two-column: context left, action right */}
+      {lead.needsReview && lead.needsReviewReason && !reviewDismissed && (() => {
+        let reviewData: { summary?: string; updated?: string[]; stale?: string[]; removed?: string[]; action?: string } | null = null;
+        try { reviewData = JSON.parse(lead.needsReviewReason); } catch { /* plain text fallback */ }
+
+        return (
+          <div className="ws-card p-4 border-l-4 ml-0 md:ml-11" style={{ borderLeftColor: 'var(--warning)' }}>
+            {/* Header row */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Info size={16} style={{ color: 'var(--warning)' }} className="shrink-0" />
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Needs Review</p>
+              </div>
+              <button
+                onClick={handleDismissReview}
+                className="shrink-0 p-1 rounded hover:bg-white/10 transition-colors"
+                title="Dismiss review notice"
+              >
+                <X size={14} style={{ color: 'var(--text-tertiary)' }} />
+              </button>
+            </div>
+
+            {reviewData ? (
+              <div className="text-xs space-y-1.5">
+                <p style={{ color: 'var(--text-secondary)' }}>{reviewData.summary}</p>
+                {reviewData.updated && reviewData.updated.length > 0 && (
+                  <div className="flex items-start gap-1.5">
+                    <Check size={12} style={{ color: 'var(--success)' }} className="shrink-0 mt-0.5" />
+                    <span style={{ color: 'var(--text-secondary)' }}>
+                      Updated: {reviewData.updated.join(', ')}
+                    </span>
+                  </div>
+                )}
+                {reviewData.removed && reviewData.removed.length > 0 && (
+                  <div className="flex items-start gap-1.5">
+                    <X size={12} style={{ color: 'var(--text-tertiary)' }} className="shrink-0 mt-0.5" />
+                    <span style={{ color: 'var(--text-tertiary)' }}>
+                      Removed: &ldquo;{reviewData.removed.join('", "')}&rdquo; signal
+                    </span>
+                  </div>
+                )}
+                {reviewData.stale && reviewData.stale.length > 0 && (
+                  <div className="flex items-start gap-1.5">
+                    <AlertTriangle size={12} style={{ color: 'var(--danger)' }} className="shrink-0 mt-0.5" />
+                    <span className="font-semibold" style={{ color: 'var(--danger)' }}>
+                      May be stale: {reviewData.stale.join(', ')}
+                    </span>
+                  </div>
+                )}
+
+                {/* Action buttons — side by side, auto-width */}
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    onClick={handleDismissReview}
+                    className="text-xs px-4 py-1.5 rounded font-medium transition-colors text-center"
+                    style={{
+                      backgroundColor: 'transparent',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-primary)',
+                    }}
+                  >
+                    Mark as Reviewed
+                  </button>
+                  {reviewData.stale && reviewData.stale.length > 0 && (
+                    <button
+                      onClick={handleClearStaleContacts}
+                      className="text-xs px-4 py-1.5 rounded font-medium transition-colors text-center"
+                      style={{
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        color: 'var(--danger)',
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                      }}
+                    >
+                      Clear Stale Contact Info
+                    </button>
+                  )}
+                  {reviewData.action === 'reactivate' && (
+                    <button
+                      onClick={handleReactivateLead}
+                      className="text-xs px-4 py-1.5 rounded font-medium transition-colors text-center"
+                      style={{
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        color: 'var(--brand-ocean)',
+                        border: '1px solid rgba(59, 130, 246, 0.2)',
+                      }}
+                    >
+                      Reactivate Lead
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{lead.needsReviewReason}</p>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Tab Navigation — Overview | Signals | Activity Log | Notes | Enrichment */}
       <div className="flex items-center gap-1 border-b ml-0 md:ml-11 overflow-x-auto no-scrollbar" style={{ borderColor: 'var(--border-primary)' }}>
@@ -399,6 +564,7 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
     ownerName: property.ownerName || '',
     ownerPhone: property.ownerPhone || '',
     ownerEmail: property.ownerEmail || '',
+    purchaseDate: property.purchaseDate ? new Date(property.purchaseDate).toISOString().split('T')[0] : '',
     ownerMailingAddress: property.ownerMailingAddress || '',
     ownerCity: property.ownerCity || '',
     ownerState: property.ownerState || '',
@@ -439,6 +605,7 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
           ownerName: ownerForm.ownerName || null,
           ownerPhone: ownerForm.ownerPhone || null,
           ownerEmail: ownerForm.ownerEmail || null,
+          purchaseDate: ownerForm.purchaseDate ? new Date(ownerForm.purchaseDate).toISOString() : null,
           ownerMailingAddress: ownerForm.ownerMailingAddress || null,
           ownerCity: ownerForm.ownerCity || null,
           ownerState: ownerForm.ownerState || null,
@@ -518,6 +685,7 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
       ownerName: property.ownerName || '',
       ownerPhone: property.ownerPhone || '',
       ownerEmail: property.ownerEmail || '',
+      purchaseDate: property.purchaseDate ? new Date(property.purchaseDate).toISOString().split('T')[0] : '',
       ownerMailingAddress: property.ownerMailingAddress || '',
       ownerCity: property.ownerCity || '',
       ownerState: property.ownerState || '',
@@ -533,6 +701,7 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
     estimatedValue: property.estimatedValue != null ? String(property.estimatedValue) : '',
     estimatedRepairCost: property.estimatedRepairCost != null ? String(property.estimatedRepairCost) : '',
     offerPrice: property.offerPrice != null ? String(property.offerPrice) : '',
+    offerStatus: lead.offerStatus || '',
   });
 
   // MAO percentage — load from localStorage, default 70%
@@ -561,6 +730,7 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
           estimatedRepairCost: dealForm.estimatedRepairCost ? parseFloat(dealForm.estimatedRepairCost) : null,
           offerPrice: dealForm.offerPrice ? parseFloat(dealForm.offerPrice) : null,
         },
+        offerStatus: dealForm.offerStatus || null,
       });
       setEditingDeal(false);
       refetch();
@@ -576,6 +746,7 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
       estimatedValue: property.estimatedValue != null ? String(property.estimatedValue) : '',
       estimatedRepairCost: property.estimatedRepairCost != null ? String(property.estimatedRepairCost) : '',
       offerPrice: property.offerPrice != null ? String(property.offerPrice) : '',
+      offerStatus: lead.offerStatus || '',
     });
     setEditingDeal(false);
   };
@@ -621,7 +792,7 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
                   onClick={onViewSignals}
                   className={`ws-tag ws-tag-${getSignalTagColor(s.signalType)} text-xs cursor-pointer hover:opacity-80 transition-opacity`}
                 >
-                  {s.label}
+                  {shortenSignalLabel(s.label)}
                 </button>
               ))}
             </div>
@@ -810,6 +981,16 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
                     />
                   </div>
                 </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>Offer Status</p>
+                  <input
+                    type="text"
+                    value={dealForm.offerStatus}
+                    onChange={(e) => setDealForm({ ...dealForm, offerStatus: e.target.value })}
+                    className="ws-input text-sm py-1.5 px-2.5 w-full"
+                    placeholder="e.g. Pending, Accepted..."
+                  />
+                </div>
               </div>
 
               {/* Live deal calculations while editing */}
@@ -867,6 +1048,9 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
                 </div>
                 <DetailItem label="Your Offer" value={property.offerPrice != null ? formatCurrency(property.offerPrice) : '—'} />
               </div>
+              {lead.offerStatus && (
+                <DetailItem label="Offer Status" value={lead.offerStatus} />
+              )}
 
               {/* Deal calculations display */}
               {(calcDealEquity != null || calcAssignmentFee != null) && (
@@ -967,6 +1151,22 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <EditField label="Name" value={ownerForm.ownerName} onChange={(v) => setOwnerForm({ ...ownerForm, ownerName: v })} />
               <div>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Property Acquired</p>
+                  {property.purchaseDate && (lead.signals || []).some((s: any) => s.isAutomated) && (
+                    <span className="flex items-center gap-0.5 text-[9px] font-medium" style={{ color: 'var(--brand-ocean)' }} title="Auto-enriched from county records">
+                      <Zap size={10} /> Auto
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="date"
+                  value={ownerForm.purchaseDate}
+                  onChange={(e) => setOwnerForm({ ...ownerForm, purchaseDate: e.target.value })}
+                  className="ws-input text-sm py-1.5 px-2.5 w-full"
+                />
+              </div>
+              <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>Phone</p>
                 <input
                   type="tel"
@@ -976,7 +1176,6 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
                   placeholder="(555) 555-5555"
                 />
               </div>
-              <EditField label="Email" value={ownerForm.ownerEmail} onChange={(v) => setOwnerForm({ ...ownerForm, ownerEmail: v })} type="email" />
               <div className="md:col-span-2">
                 <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Mailing Address</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -990,11 +1189,25 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
                   </div>
                 </div>
               </div>
+              <EditField label="Email" value={ownerForm.ownerEmail} onChange={(v) => setOwnerForm({ ...ownerForm, ownerEmail: v })} />
 
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <DetailItem label="Name" value={property.ownerName || '—'} />
+              <div>
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Property Acquired</p>
+                  {property.purchaseDate && (lead.signals || []).some((s: any) => s.isAutomated) && (
+                    <span className="flex items-center gap-0.5 text-[9px] font-medium" style={{ color: 'var(--brand-ocean)' }} title="Auto-enriched from county records">
+                      <Zap size={10} />
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                  {property.purchaseDate ? formatDate(property.purchaseDate) : '—'}
+                </p>
+              </div>
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>Phone</p>
                 {property.ownerPhone ? (
@@ -1006,21 +1219,21 @@ function OverviewTab({ property, lead, signals, distressSignals, onViewSignals, 
                 )}
               </div>
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>Email</p>
-                {property.ownerEmail ? (
-                  <a href={`mailto:${property.ownerEmail}`} className="text-sm font-medium flex items-center gap-1.5 hover:underline" style={{ color: 'var(--brand-ocean)' }}>
-                    <Mail size={12} /> {property.ownerEmail}
-                  </a>
-                ) : (
-                  <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>—</p>
-                )}
-              </div>
-              <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>Mailing Address</p>
                 {formatMailingAddress() ? (
                   <p className="text-sm font-medium flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
                     <MapPin size={12} style={{ color: 'var(--text-tertiary)' }} /> {formatMailingAddress()}
                   </p>
+                ) : (
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>—</p>
+                )}
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>Email</p>
+                {property.ownerEmail ? (
+                  <a href={`mailto:${property.ownerEmail}`} className="text-sm font-medium flex items-center gap-1.5 hover:underline" style={{ color: 'var(--brand-ocean)' }}>
+                    <Mail size={12} /> {property.ownerEmail}
+                  </a>
                 ) : (
                   <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>—</p>
                 )}

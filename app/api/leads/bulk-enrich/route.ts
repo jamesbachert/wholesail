@@ -27,19 +27,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { leadIds, connectorSlugs } = body;
+  const { leadIds, connectorSlugs, enrichAll, regionSlug } = body;
 
-  if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
-    return NextResponse.json({ error: 'leadIds array is required' }, { status: 400 });
-  }
   if (!connectorSlugs || !Array.isArray(connectorSlugs) || connectorSlugs.length === 0) {
     return NextResponse.json({ error: 'connectorSlugs array is required' }, { status: 400 });
   }
-  if (leadIds.length > BULK_ENRICH_LIMIT) {
-    return NextResponse.json(
-      { error: `Maximum ${BULK_ENRICH_LIMIT} leads per batch` },
-      { status: 400 }
-    );
+
+  if (!enrichAll) {
+    if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
+      return NextResponse.json({ error: 'leadIds array is required' }, { status: 400 });
+    }
+    if (leadIds.length > BULK_ENRICH_LIMIT) {
+      return NextResponse.json(
+        { error: `Maximum ${BULK_ENRICH_LIMIT} leads per batch` },
+        { status: 400 }
+      );
+    }
   }
 
   // Resolve connector coverage for each slug
@@ -58,8 +61,14 @@ export async function POST(request: NextRequest) {
 
   let leads: Array<{ id: string; property: { zipCode: string | null; address: string | null } | null }>;
   try {
+    const whereClause: any = enrichAll
+      ? regionSlug
+        ? { region: { slug: regionSlug } }
+        : {}
+      : { id: { in: leadIds } };
+
     leads = await prisma.lead.findMany({
-      where: { id: { in: leadIds } },
+      where: whereClause,
       select: {
         id: true,
         property: { select: { zipCode: true, address: true } },

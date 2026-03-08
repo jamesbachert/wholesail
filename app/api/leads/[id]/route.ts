@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLeadById, updateLeadStatus, updateProperty } from '@/lib/db';
+import { prisma } from '@/lib/prisma';
 import { LeadStatus } from '@prisma/client';
 
 export async function GET(
@@ -12,6 +13,14 @@ export async function GET(
 
     if (!lead) {
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+    }
+
+    // Track first view timestamp (fire-and-forget, don't block response)
+    if (!lead.firstViewedAt) {
+      prisma.lead.update({
+        where: { id },
+        data: { firstViewedAt: new Date() },
+      }).catch(() => {});
     }
 
     return NextResponse.json(lead);
@@ -46,6 +55,15 @@ export async function PATCH(
       return NextResponse.json(lead);
     }
 
+    // Handle lead-level field updates (offerStatus, leadSource)
+    const hasLeadFields = body.offerStatus !== undefined || body.leadSource !== undefined;
+    if (hasLeadFields) {
+      const leadUpdate: Record<string, any> = {};
+      if (body.offerStatus !== undefined) leadUpdate.offerStatus = body.offerStatus;
+      if (body.leadSource !== undefined) leadUpdate.leadSource = body.leadSource;
+      await prisma.lead.update({ where: { id }, data: leadUpdate });
+    }
+
     // Handle property updates
     if (body.property) {
       const lead = await getLeadById(id);
@@ -66,6 +84,12 @@ export async function PATCH(
       }
 
       await updateProperty(lead.propertyId, propertyUpdate);
+      const updated = await getLeadById(id);
+      return NextResponse.json(updated);
+    }
+
+    // If only lead-level fields were updated (no property payload)
+    if (hasLeadFields) {
       const updated = await getLeadById(id);
       return NextResponse.json(updated);
     }

@@ -125,7 +125,7 @@ model Property {
 // ============================================================
 
 enum LeadStatus {
-  NEW
+  COLD
   CONTACTED
   WARM
   HOT
@@ -149,11 +149,21 @@ model Lead {
   totalScore      Float      @default(0)
 
   // Status tracking
-  status          LeadStatus @default(NEW)
+  status          LeadStatus @default(COLD)
   priority        String     @default("normal")
   isTimeSensitive Boolean    @default(false)
   timeSensitiveReason String?
   timeSensitiveDeadline DateTime?
+  timeSensitiveDismissedAt DateTime?
+
+  // Needs Review — data changed during enrichment, user should verify
+  needsReview           Boolean   @default(false)
+  needsReviewReason     String?
+  needsReviewDismissedAt DateTime?
+
+  // Source & offer tracking
+  leadSource      String?
+  offerStatus     String?
 
   // Assignment
   assignedTo      String?
@@ -162,6 +172,7 @@ model Lead {
   lastActivityAt  DateTime   @default(now())
   lastSignalAt    DateTime?
   archivedAt      DateTime?
+  firstViewedAt   DateTime?
   firstDiscovered DateTime   @default(now())
   lastContacted   DateTime?
   nextFollowUp    DateTime?
@@ -179,6 +190,7 @@ model Lead {
   @@index([status])
   @@index([regionId])
   @@index([isTimeSensitive])
+  @@index([needsReview])
   @@index([lastActivityAt(sort: Desc)])
   @@index([createdAt(sort: Desc)])
 }

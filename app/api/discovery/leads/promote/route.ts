@@ -246,7 +246,7 @@ export async function POST(request: NextRequest) {
           data: {
             propertyId: property.id,
             regionId: region.id,
-            status: 'NEW',
+            status: 'COLD',
           },
         });
 

@@ -1,5 +1,6 @@
 import { prisma } from './prisma';
 import { LeadStatus, ContactType, ContactOutcome } from '@prisma/client';
+import { getNewLeadThresholdDays } from '@/lib/settings';
 
 // ============================================================
 // LEADS
@@ -84,9 +85,16 @@ export async function getLeadById(id: string) {
 }
 
 export async function updateLeadStatus(id: string, status: LeadStatus) {
+  const data: any = { status };
+  if (status === 'ARCHIVE') {
+    data.archivedAt = new Date();
+  } else {
+    // Clear archivedAt when reactivating from archive
+    data.archivedAt = null;
+  }
   return prisma.lead.update({
     where: { id },
-    data: { status },
+    data,
   });
 }
 
@@ -184,7 +192,7 @@ export async function createLeadFromProperty(data: {
     data: {
       propertyId: property.id,
       regionId,
-      status: 'NEW',
+      status: 'COLD',
     },
   });
 
@@ -253,7 +261,7 @@ export async function addContactLog(data: {
   // If outcome indicates interest, potentially upgrade status
   if (data.outcome === 'INTERESTED') {
     const lead = await prisma.lead.findUnique({ where: { id: data.leadId } });
-    if (lead && (lead.status === 'NEW' || lead.status === 'CONTACTED')) {
+    if (lead && (lead.status === 'COLD' || lead.status === 'CONTACTED')) {
       await prisma.lead.update({
         where: { id: data.leadId },
         data: { status: 'WARM' },
@@ -270,7 +278,7 @@ export async function addContactLog(data: {
   }
 
   // If first contact, move from NEW to CONTACTED
-  if (await lead_is_new(data.leadId)) {
+  if (await lead_is_cold(data.leadId)) {
     await prisma.lead.update({
       where: { id: data.leadId },
       data: { status: 'CONTACTED' },
@@ -280,9 +288,9 @@ export async function addContactLog(data: {
   return contact;
 }
 
-async function lead_is_new(leadId: string): Promise<boolean> {
+async function lead_is_cold(leadId: string): Promise<boolean> {
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
-  return lead?.status === 'NEW';
+  return lead?.status === 'COLD';
 }
 
 // ============================================================
@@ -466,9 +474,25 @@ export async function getDashboardStats(regionId?: string) {
       .filter((a) => types.includes(a.type))
       .reduce((sum, a) => sum + a._count, 0);
 
+  // "New" count — leads that haven't been viewed or were recently created
+  const thresholdDays = await getNewLeadThresholdDays();
+  const newCutoff = new Date();
+  newCutoff.setDate(newCutoff.getDate() - thresholdDays);
+
+  const newCount = await prisma.lead.count({
+    where: {
+      ...where,
+      OR: [
+        { firstViewedAt: null },
+        { createdAt: { gte: newCutoff } },
+      ],
+    },
+  });
+
   return {
     totalLeads,
-    newThisWeek: countByStatus('NEW'),
+    newCount,
+    cold: countByStatus('COLD'),
     contacted: countByStatus('CONTACTED'),
     warm: countByStatus('WARM'),
     hot: countByStatus('HOT'),

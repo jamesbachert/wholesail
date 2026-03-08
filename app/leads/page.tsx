@@ -14,6 +14,7 @@ import {
   Archive,
   ChevronLeft,
   ChevronRight,
+  Info,
 } from 'lucide-react';
 import { AddLeadModal } from '@/components/leads/AddLeadModal';
 import { BulkEnrichDialog } from '@/components/leads/BulkEnrichDialog';
@@ -24,6 +25,7 @@ import {
   getScoreColorHex,
   getStatusLabel,
   getSignalTagColor,
+  shortenSignalLabel,
   formatCurrency,
   timeAgo,
 } from '@/lib/mockData';
@@ -33,7 +35,7 @@ import type { Filters, FilterOptions } from '@/components/leads/AdvancedFilters'
 type SortField = 'totalScore' | 'createdAt' | 'lastActivityAt' | 'lastContacted' | 'estimatedValue';
 type SortDir = 'asc' | 'desc';
 
-const statusFilters = ['ALL', 'NEW', 'CONTACTED', 'WARM', 'HOT', 'UNDER_CONTRACT', 'HANDED_OFF', 'CLOSED', 'ARCHIVE'];
+const statusFilters = ['ALL', 'NEW_FILTER', 'COLD', 'CONTACTED', 'WARM', 'HOT', 'UNDER_CONTRACT', 'HANDED_OFF', 'CLOSED', 'ARCHIVE'];
 
 const FILTERS_STORAGE_KEY = 'wholesail-leads-filters';
 
@@ -59,6 +61,7 @@ function LeadsPageInner() {
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({ cities: [], zipCodes: [] });
   const [showAddLead, setShowAddLead] = useState(false);
   const [showBulkEnrich, setShowBulkEnrich] = useState(false);
+  const [showBulkEnrichAll, setShowBulkEnrichAll] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [filtersRestored, setFiltersRestored] = useState(false);
 
@@ -91,14 +94,19 @@ function LeadsPageInner() {
     localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify({ statusFilter, advancedFilters }));
   }, [statusFilter, advancedFilters, filtersRestored]);
 
-  // Build API URL with all filters
+  // Build API URL with all filters (wait for localStorage restore to avoid race condition)
   const apiUrl = useMemo(() => {
+    if (!filtersRestored) return null; // Don't fetch until filters are restored
     const params = new URLSearchParams();
     if (regionSlug) params.set('region', regionSlug);
     params.set('sortBy', sortField);
     params.set('sortDir', sortDir);
 
-    if (statusFilter !== 'ALL') params.set('status', statusFilter);
+    if (statusFilter === 'NEW_FILTER') {
+      params.set('isNew', 'true');
+    } else if (statusFilter !== 'ALL') {
+      params.set('status', statusFilter);
+    }
     if (searchQuery) params.set('search', searchQuery);
 
     // Advanced filters
@@ -114,6 +122,7 @@ function LeadsPageInner() {
     if (advancedFilters.minArv) params.set('minArv', advancedFilters.minArv);
     if (advancedFilters.maxArv) params.set('maxArv', advancedFilters.maxArv);
     if (advancedFilters.timeSensitive) params.set('timeSensitive', 'true');
+    if (advancedFilters.needsReview) params.set('needsReview', 'true');
     if (advancedFilters.hasPhone) params.set('hasPhone', 'true');
     if (advancedFilters.priority) params.set('priority', advancedFilters.priority);
     if (advancedFilters.minCodeViolations) params.set('minCodeViolations', advancedFilters.minCodeViolations);
@@ -144,6 +153,8 @@ function LeadsPageInner() {
   }, [liveData]);
 
   const totalCount = liveData ? liveData.total : allLeads.length;
+  const newLeadThresholdDays = liveData?.newLeadThresholdDays || 14;
+  const newCutoffMs = Date.now() - newLeadThresholdDays * 86400000;
   const totalPages = liveData?.totalPages || 1;
 
   const toggleSort = (field: SortField) => {
@@ -235,6 +246,13 @@ function LeadsPageInner() {
             </>
           )}
           <button
+            onClick={() => setShowBulkEnrichAll(true)}
+            className="ws-btn-secondary text-xs flex items-center gap-1.5"
+          >
+            <Search size={14} />
+            Enrich All
+          </button>
+          <button
             onClick={() => setShowAddLead(true)}
             className="ws-btn-primary text-xs flex items-center gap-1.5"
           >
@@ -262,20 +280,28 @@ function LeadsPageInner() {
             />
           </div>
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-            {statusFilters.map((s) => (
-              <button
-                key={s}
-                onClick={() => { setStatusFilter(s); setCurrentPage(1); setSelectedLeads(new Set()); }}
-                className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
-                style={
-                  statusFilter === s
-                    ? { backgroundColor: 'var(--brand-deep)', color: '#fff' }
-                    : { color: 'var(--text-secondary)', backgroundColor: 'var(--bg-elevated)' }
-                }
-              >
-                {s === 'ALL' ? 'All' : getStatusLabel(s)}
-              </button>
-            ))}
+            {statusFilters.map((s) => {
+              const isNewFilter = s === 'NEW_FILTER';
+              const isActive = statusFilter === s;
+              return (
+                <button
+                  key={s}
+                  onClick={() => { setStatusFilter(s); setCurrentPage(1); setSelectedLeads(new Set()); }}
+                  className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
+                  style={
+                    isActive
+                      ? isNewFilter
+                        ? { backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#3B82F6', border: '1px solid rgba(59, 130, 246, 0.3)' }
+                        : { backgroundColor: 'var(--brand-deep)', color: '#fff' }
+                      : isNewFilter
+                        ? { color: '#3B82F6', backgroundColor: 'var(--bg-elevated)', border: '1px solid transparent' }
+                        : { color: 'var(--text-secondary)', backgroundColor: 'var(--bg-elevated)' }
+                  }
+                >
+                  {s === 'ALL' ? 'All' : isNewFilter ? 'New' : getStatusLabel(s)}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -327,6 +353,8 @@ function LeadsPageInner() {
               const signals = lead.signals || [];
               const created = lead.createdAt || lead.firstDiscovered;
 
+              const isNewLead = !lead.firstViewedAt || new Date(lead.createdAt).getTime() > newCutoffMs;
+
               return (
                 <div key={lead.id} className="ws-table-row">
                   {/* Desktop Row */}
@@ -342,7 +370,9 @@ function LeadsPageInner() {
                     <Link href={`/leads/${lead.id}`} className="min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{prop.address}</p>
+                        {isNewLead && <span className="ws-tag ws-tag-info text-[10px] shrink-0">New</span>}
                         {lead.isTimeSensitive && <AlertTriangle size={14} style={{ color: 'var(--danger)' }} className="shrink-0" />}
+                        {lead.needsReview && !lead.needsReviewDismissedAt && <Info size={14} style={{ color: 'var(--warning)' }} className="shrink-0" />}
                       </div>
                       <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>
                         {prop.city}, {prop.state} {prop.zipCode} · {prop.ownerName || '—'}
@@ -361,7 +391,7 @@ function LeadsPageInner() {
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {signals.slice(0, 2).map((s: any, i: number) => (
-                        <span key={i} className={`ws-tag ws-tag-${getSignalTagColor(s.signalType)} text-[10px]`}>{s.label}</span>
+                        <span key={i} className={`ws-tag ws-tag-${getSignalTagColor(s.signalType)} text-[10px]`}>{shortenSignalLabel(s.label)}</span>
                       ))}
                       {signals.length > 2 && <span className="ws-tag ws-tag-neutral text-[10px]">+{signals.length - 2}</span>}
                     </div>
@@ -387,14 +417,16 @@ function LeadsPageInner() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{prop.address}</p>
+                        {isNewLead && <span className="ws-tag ws-tag-info text-[10px] shrink-0">New</span>}
                         {lead.isTimeSensitive && <AlertTriangle size={12} style={{ color: 'var(--danger)' }} className="shrink-0" />}
+                        {lead.needsReview && !lead.needsReviewDismissedAt && <Info size={12} style={{ color: 'var(--warning)' }} className="shrink-0" />}
                       </div>
                       <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>
                         {prop.city} · {prop.ownerName || '—'} · {formatCurrency(prop.estimatedValue || 0)}
                       </p>
                       <div className="flex flex-wrap gap-1 mt-1.5">
                         {signals.slice(0, 3).map((s: any, i: number) => (
-                          <span key={i} className={`ws-tag ws-tag-${getSignalTagColor(s.signalType)} text-[10px]`}>{s.label}</span>
+                          <span key={i} className={`ws-tag ws-tag-${getSignalTagColor(s.signalType)} text-[10px]`}>{shortenSignalLabel(s.label)}</span>
                         ))}
                       </div>
                     </div>
@@ -475,7 +507,7 @@ function LeadsPageInner() {
           onLeadCreated={() => refetch()}
         />
       )}
-      {/* Bulk Enrich Dialog */}
+      {/* Bulk Enrich Dialog (selected leads) */}
       {showBulkEnrich && (
         <BulkEnrichDialog
           leads={allLeads.filter((l: any) => selectedLeads.has(l.id)).map((l: any) => ({
@@ -490,6 +522,20 @@ function LeadsPageInner() {
           onComplete={() => {
             setShowBulkEnrich(false);
             setSelectedLeads(new Set());
+            refetch();
+          }}
+        />
+      )}
+      {/* Bulk Enrich All Dialog */}
+      {showBulkEnrichAll && (
+        <BulkEnrichDialog
+          leads={[]}
+          enrichAll
+          totalLeadCount={totalCount}
+          regionSlug={regionSlug}
+          onClose={() => setShowBulkEnrichAll(false)}
+          onComplete={() => {
+            setShowBulkEnrichAll(false);
             refetch();
           }}
         />

@@ -190,6 +190,16 @@ const COVERAGE: ConnectorCoverage[] = [
     supportedZipCodes: ALLENTOWN_ZIPS,
   },
   {
+    slug: 'lehigh-county-tax-parcels',
+    name: 'Lehigh County Tax Parcels',
+    type: 'lookup',
+    connectorKind: 'parcel_assessment',
+    description: 'County-wide parcel data with sale history, deed info, and assessments from Lehigh County ArcGIS.',
+    regionSlug: 'lehigh-valley',
+    enrichmentMode: 'live_lookup',
+    supportedZipCodes: LEHIGH_COUNTY_ZIPS,
+  },
+  {
     slug: 'lehigh-elite-revenue-tax',
     name: 'Lehigh County Tax Delinquent Lookup',
     type: 'lookup',

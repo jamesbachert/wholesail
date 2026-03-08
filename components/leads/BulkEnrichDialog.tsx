@@ -55,13 +55,16 @@ interface BulkEnrichDialogProps {
   }>;
   onClose: () => void;
   onComplete: () => void;
+  enrichAll?: boolean;
+  totalLeadCount?: number;
+  regionSlug?: string;
 }
 
 const BULK_LIMIT = 50;
 
 type Phase = 'select' | 'running' | 'results';
 
-export function BulkEnrichDialog({ leads, onClose, onComplete }: BulkEnrichDialogProps) {
+export function BulkEnrichDialog({ leads, onClose, onComplete, enrichAll, totalLeadCount, regionSlug }: BulkEnrichDialogProps) {
   const [phase, setPhase] = useState<Phase>('select');
   const [connectors, setConnectors] = useState<BulkConnector[]>([]);
   const [loadingConnectors, setLoadingConnectors] = useState(true);
@@ -76,7 +79,7 @@ export function BulkEnrichDialog({ leads, onClose, onComplete }: BulkEnrichDialo
   });
   const abortRef = useRef<AbortController | null>(null);
 
-  const overLimit = leads.length > BULK_LIMIT;
+  const overLimit = !enrichAll && leads.length > BULK_LIMIT;
 
   // Compute zip codes and lead counts from selected leads
   const { zipCodes, leadCountsByZip } = useMemo(() => {
@@ -92,15 +95,18 @@ export function BulkEnrichDialog({ leads, onClose, onComplete }: BulkEnrichDialo
 
   // Fetch available connectors
   useEffect(() => {
-    if (zipCodes.length === 0) {
+    if (!enrichAll && zipCodes.length === 0) {
       setLoadingConnectors(false);
       return;
     }
     setLoadingConnectors(true);
+    const payload = enrichAll
+      ? { regionSlug }
+      : { zipCodes, leadCountsByZip };
     fetch('/api/connectors/coverage/bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ zipCodes, leadCountsByZip }),
+      body: JSON.stringify(payload),
     })
       .then((r) => r.json())
       .then((data) => {
@@ -112,7 +118,7 @@ export function BulkEnrichDialog({ leads, onClose, onComplete }: BulkEnrichDialo
       })
       .catch(() => setError('Failed to load available connectors'))
       .finally(() => setLoadingConnectors(false));
-  }, [zipCodes, leadCountsByZip]);
+  }, [enrichAll, regionSlug, zipCodes, leadCountsByZip]);
 
   // Escape key to close
   useEffect(() => {
@@ -142,6 +148,11 @@ export function BulkEnrichDialog({ leads, onClose, onComplete }: BulkEnrichDialo
 
   // Count how many leads the selected connectors will actually enrich
   const selectedLeadCount = useMemo(() => {
+    if (enrichAll) {
+      // In enrichAll mode we don't have all leads client-side;
+      // use totalLeadCount as the display count
+      return totalLeadCount || 0;
+    }
     const coveredZips = new Set<string>();
     for (const c of connectors) {
       if (selected.has(c.slug)) {
@@ -157,7 +168,7 @@ export function BulkEnrichDialog({ leads, onClose, onComplete }: BulkEnrichDialo
       }
     }
     return count;
-  }, [selected, connectors, leads]);
+  }, [enrichAll, totalLeadCount, selected, connectors, leads]);
 
   async function handleRun() {
     setPhase('running');
@@ -173,13 +184,14 @@ export function BulkEnrichDialog({ leads, onClose, onComplete }: BulkEnrichDialo
     abortRef.current = controller;
 
     try {
+      const body = enrichAll
+        ? { enrichAll: true, regionSlug, connectorSlugs: Array.from(selected) }
+        : { leadIds: leads.map((l) => l.id), connectorSlugs: Array.from(selected) };
+
       const res = await fetch('/api/leads/bulk-enrich', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leadIds: leads.map((l) => l.id),
-          connectorSlugs: Array.from(selected),
-        }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       });
 
@@ -289,7 +301,7 @@ export function BulkEnrichDialog({ leads, onClose, onComplete }: BulkEnrichDialo
               className="text-[10px] font-bold px-2 py-0.5 rounded-full"
               style={{ backgroundColor: 'var(--brand-deep)', color: '#fff' }}
             >
-              {leads.length} lead{leads.length !== 1 ? 's' : ''}
+              {enrichAll ? (totalLeadCount || 0) : leads.length} lead{(enrichAll ? (totalLeadCount || 0) : leads.length) !== 1 ? 's' : ''}
             </span>
           </div>
           <button
@@ -448,7 +460,10 @@ export function BulkEnrichDialog({ leads, onClose, onComplete }: BulkEnrichDialo
                     </span>
                   </div>
                   <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                    Applies to {c.matchingLeadCount} of {leads.length} lead{leads.length !== 1 ? 's' : ''}
+                    {enrichAll
+                      ? `Covers ${c.matchingZipCodes.length} zip code${c.matchingZipCodes.length !== 1 ? 's' : ''}`
+                      : `Applies to ${c.matchingLeadCount} of ${leads.length} lead${leads.length !== 1 ? 's' : ''}`
+                    }
                   </span>
                 </div>
                 <div className="shrink-0">

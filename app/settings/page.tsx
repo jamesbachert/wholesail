@@ -33,13 +33,14 @@ import { useApi, apiPost, apiPatch, apiDelete } from '@/lib/hooks';
 import { useRegion } from '@/components/shared/RegionProvider';
 import { useWorkspace, type Workspace } from '@/components/shared/WorkspaceProvider';
 
-type SettingsTab = 'account' | 'scoring' | 'regions' | 'sources' | 'scripts' | 'notifications' | 'apikeys';
+type SettingsTab = 'account' | 'preferences' | 'scoring' | 'regions' | 'sources' | 'scripts' | 'notifications' | 'apikeys';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('account');
 
   const tabs = [
     { id: 'account' as const, label: 'Account', icon: UserCircle },
+    { id: 'preferences' as const, label: 'Preferences', icon: Settings },
     { id: 'scoring' as const, label: 'Scoring Weights', icon: Sliders },
     { id: 'regions' as const, label: 'Regions', icon: MapPin },
     { id: 'sources' as const, label: 'Data Sources', icon: Database },
@@ -86,6 +87,7 @@ export default function SettingsPage() {
 
         <div className="flex-1 min-w-0">
           {activeTab === 'account' && <AccountSettings />}
+          {activeTab === 'preferences' && <PreferencesSettings />}
           {activeTab === 'scoring' && <ScoringSettings />}
           {activeTab === 'regions' && <RegionSettings />}
           {activeTab === 'sources' && <SourceSettings />}
@@ -1379,7 +1381,6 @@ function AccountSettings() {
         </p>
       </div>
 
-      <DealDefaultsSettings />
     </div>
   );
 }
@@ -1790,5 +1791,92 @@ function ScriptEditorModal({
       </div>
     </div>,
     document.body
+  );
+}
+
+// ============================================================
+// PREFERENCES SETTINGS — general app preferences
+// ============================================================
+
+function PreferencesSettings() {
+  const { data, loading } = useApi<any>('/api/settings/preferences');
+  const [threshold, setThreshold] = useState(14);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (data?.newLeadThresholdDays) {
+      setThreshold(data.newLeadThresholdDays);
+    }
+  }, [data]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await apiPost('/api/settings/preferences', { newLeadThresholdDays: threshold });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      // Error handling
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+    <div className="ws-card">
+      <div className="p-5 border-b" style={{ borderColor: 'var(--border-primary)' }}>
+        <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Preferences</h2>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+          General application settings
+        </p>
+      </div>
+
+      <div className="p-5 space-y-6">
+        {/* New Lead Threshold */}
+        <div className="max-w-md">
+          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
+            New Lead Threshold (days)
+          </label>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-tertiary)' }}>
+            Leads are badged as &ldquo;New&rdquo; if they haven&apos;t been viewed or were created within this many days.
+          </p>
+          <div className="flex items-center gap-3">
+            <input
+              type="number"
+              min={1}
+              max={365}
+              value={threshold}
+              onChange={(e) => setThreshold(Math.max(1, Math.min(365, parseInt(e.target.value) || 1)))}
+              className="ws-input text-sm w-24"
+              disabled={loading}
+            />
+            <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>days</span>
+          </div>
+        </div>
+
+        {/* Save Button */}
+        <div>
+          <button
+            onClick={handleSave}
+            disabled={saving || loading}
+            className="ws-btn-primary text-xs py-2 px-4"
+          >
+            {saving ? (
+              <><Loader2 size={12} className="animate-spin" /> Saving...</>
+            ) : saved ? (
+              <><Check size={14} /> Saved</>
+            ) : (
+              'Save Preferences'
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <DealDefaultsSettings />
+    </>
   );
 }

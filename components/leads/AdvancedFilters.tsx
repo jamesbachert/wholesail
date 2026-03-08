@@ -21,6 +21,7 @@ interface Filters {
   minArv: string;
   maxArv: string;
   timeSensitive: boolean;
+  needsReview: boolean;
   hasPhone: boolean;
   priority: string;
   minCodeViolations: string;
@@ -68,6 +69,7 @@ const emptyFilters: Filters = {
   minArv: '',
   maxArv: '',
   timeSensitive: false,
+  needsReview: false,
   hasPhone: false,
   priority: '',
   minCodeViolations: '',
@@ -88,6 +90,7 @@ export function AdvancedFilters({ filters, onChange, filterOptions }: AdvancedFi
     if (f.minScore || f.maxScore) count++;
     if (f.minArv || f.maxArv) count++;
     if (f.timeSensitive) count++;
+    if (f.needsReview) count++;
     if (f.hasPhone) count++;
     if (f.priority) count++;
     if (f.minCodeViolations) count++;
@@ -370,6 +373,15 @@ export function AdvancedFilters({ filters, onChange, filterOptions }: AdvancedFi
                 className="rounded"
               />
               <span style={{ color: 'var(--text-primary)' }}>Time Sensitive Only</span>
+            </label>
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={filters.needsReview}
+                onChange={(e) => onChange({ ...filters, needsReview: e.target.checked })}
+                className="rounded"
+              />
+              <span style={{ color: 'var(--text-primary)' }}>Needs Review</span>
             </label>
             <label className="flex items-center gap-2 text-xs cursor-pointer">
               <input

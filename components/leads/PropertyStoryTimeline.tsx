@@ -8,6 +8,7 @@ interface PropertyStoryTimelineProps {
     yearBuilt?: number | null;
     purchaseDate?: string | Date | null;
     purchasePrice?: number | null;
+    ownerName?: string | null;
   };
   signals: Array<{
     signalType: string;
@@ -73,28 +74,36 @@ export function PropertyStoryTimeline({ property, signals }: PropertyStoryTimeli
 
 function TimelineEvent({ event }: { event: PropertyStoryEvent }) {
   return (
-    <div className="relative flex items-start gap-3">
+    <div className="relative flex items-start gap-0">
       {/* Dot */}
       <div
-        className="w-[11px] h-[11px] rounded-full shrink-0 mt-[3px] -ml-4 z-10"
+        className="w-[11px] h-[11px] rounded-full shrink-0 mt-[3px] -ml-4 mr-3 z-10"
         style={{
           backgroundColor: 'var(--text-tertiary)',
           border: '2px solid var(--bg-surface)',
         }}
       />
-      {/* Content */}
-      <div className="flex items-baseline gap-1.5 min-w-0">
-        <span className="text-sm font-semibold shrink-0" style={{ color: 'var(--text-primary)' }}>
-          {event.year}
-        </span>
-        <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>—</span>
-        <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-          {event.label}
-          {event.detail && (
-            <span style={{ color: 'var(--text-tertiary)' }}> ({event.detail})</span>
-          )}
-        </span>
-      </div>
+      {/* Year column */}
+      <span
+        className="text-sm font-semibold shrink-0 tabular-nums"
+        style={{ color: 'var(--text-primary)', width: '36px' }}
+      >
+        {event.year}
+      </span>
+      {/* Month Day column */}
+      <span
+        className="text-sm shrink-0 ml-2 mr-4"
+        style={{ color: event.monthDay ? 'var(--text-primary)' : 'var(--border-primary)', width: '52px', whiteSpace: 'nowrap' }}
+      >
+        {event.monthDay || '——'}
+      </span>
+      {/* Event description */}
+      <span className="text-sm min-w-0" style={{ color: 'var(--text-secondary)' }}>
+        {event.label}
+        {event.detail && (
+          <span style={{ color: 'var(--text-tertiary)' }}> ({event.detail})</span>
+        )}
+      </span>
     </div>
   );
 }

@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useApi } from '@/lib/hooks';
-import { getScoreColorHex, formatCurrency, getSignalTagColor } from '@/lib/mockData';
+import { getScoreColorHex, formatCurrency, getSignalTagColor, shortenSignalLabel } from '@/lib/mockData';
 
 // Placeholder partner data — will be replaced by API once partner management is built
 const mockPartners = [
@@ -139,7 +139,7 @@ export default function HandoffPage() {
                         <div className="flex items-center gap-1.5 mt-0.5">
                           {signals.slice(0, 2).map((s: any, i: number) => (
                             <span key={i} className={`ws-tag ws-tag-${getSignalTagColor(s.signalType)} text-[10px]`}>
-                              {s.label}
+                              {shortenSignalLabel(s.label)}
                             </span>
                           ))}
                         </div>
